@@ -65,8 +65,8 @@ DeskBox 是一个**常驻托盘的 WPF 应用**，没有主窗口生命周期 �
    - 装配 `HotkeyService`（订阅 `Pressed` → 面板开合，`SystemSettingsChanged` → 重新探测主题）；
    - 注册配置里的热键；
    - 装配 `TrayService`，把托盘菜单的各项请求接到对应动作上；
-   - 根据状态弹气泡：受限环境提示 / 未设热键提示 / 已启动提示；
-   - 如果收纳盒是空的，自动把面板显示出来。
+   - 必要时显示一次受限环境提示，常规启动不显示重复气泡；
+   - 首次使用且未传 `--tray` 时自动展开，之后只驻留托盘；`HasStarted` 保存首用状态，旧配置被识别为已有安装。
 
 ## 三、数据模型
 
@@ -107,13 +107,15 @@ DeskItem
 | `ConfigService` | `config.json` 读写 | 原子写、损坏备份、宽松 JSON 编码（中文不转义） |
 | `ItemStore` | 收纳项的增删改查与启动 | 移动→复制降级、`.lnk` 自解析启动 |
 | `ShortcutService` | `.lnk` 创建与解析 | COM `IShellLinkW` + `IPersistFile` |
-| `IconService` | 图标提取与线条化 | 内存缓存、可选单色化 |
+| `IconService` | 图标提取与线条化 | 后台加载，按 DPI / 尺寸 / 图标风格缓存 |
 | `HotkeyService` | 全局热键 | 消息窗口 + `RegisterHotKey`、字符串规格编解码 |
-| `TrayService` | 托盘图标与菜单 | `NotifyIcon` + WPF `ContextMenu` 混用 |
+| `TrayService` | 托盘图标与菜单 | `NotifyIcon` + WPF `MaterialMenu` |
 | `AutoStartService` | 开机自启 | 注册表 Run 优先，启动文件夹兜底 |
 | `ThemeService` | 读系统主题/强调色 | 注册表 + 监听系统广播消息 |
 | `ThemeBrushes` | 计算并写入动态画刷 | 全部 UI 颜色都走 `DynamicResource` |
 | `BackdropService` | Mica / Acrylic / 纯色 | Win11 走 DWM，低版本走 SetWindowCompositionAttribute |
+| `NameService` | 名称排序与全局搜索 | 内嵌 Unihan 拼音、常见多音词、自然数字比较 |
+| `Motion` | 过渡与滚动 | 300 ms 缓动、窗口准备、淡入淡出、滚动取消 |
 | `RecycleBin` | 删除到回收站 | `SHFileOperation` + `FOF_ALLOWUNDO` |
 
 ### ItemStore：收纳与启动
@@ -162,7 +164,7 @@ BaseDir 写不进去？
 面板是一个 `WindowStyle=None` + `Topmost` 的无边框窗口，位置按屏幕工作区的
 `WidthRatio` / `HeightRatio` 居中偏上计算（`PositionPanel`），并保证不出屏。
 
-- `ShowPanel` / `HidePanel` / `TogglePanel` 三个入口，带缩放+位移动画。
+- `ShowPanel` / `HidePanel` / `TogglePanel` 三个入口，带淡入淡出与轻微位移。显示前准备图标、布局和材质，使用 DWM cloak 隐藏准备帧。
 - 动画是异步的，而用户可能在动画没播完时又按了一次热键 —— 所以有个
   `_visibilityToken` 计数器，动画回调里先比对 token，过期就丢弃，避免"快速连按后状态错乱"。
 - 点击面板外部自动隐藏：`OnDeactivated` 里不是立刻隐藏，而是启动 `_hideWatch` 定时器，
@@ -189,21 +191,23 @@ BaseDir 写不进去？
 同时把 `LastGroupId` 持久化，下次打开还停在原来的位置。
 
 `Refresh()` 把当前分组的 `DeskItem` 列表投影成 `ItemVm` 集合绑给 `ItemsControl`：
-每个条目现取图标（`IconService`，带缓存）、按配置算出格子尺寸与标签可见性。
+复用已有 `ItemVm`，后台串行提取图标并更新冻结的图像，按配置调整格子尺寸与标签可见性。列表重排使用位移动画。
 布局是 `WrapPanel`，条目大小由 `ItemVm.CellWidth/CellHeight` 决定。
 
 ### 排序
 
-`ApplySort(mode)` 直接对当前分组的列表重排后整体 `Refresh`：
+`ApplySort(mode)` 使用 `NameService` 重排整棵分组树并保存；刷新时也按所选模式显示，新导入或重命名的项目保持排序：
 
 | mode | 规则 |
 | --- | --- |
 | `Manual` | 保持用户拖拽出来的顺序（默认） |
-| `Name` | 按 `Name` 当前区域文化忽略大小写 |
+| `Name` | 分组置顶，英文在前、中文完整拼音在后，忽略大小写、数字按数值 |
 | `Type` | 先按 `Kind` 再按 `Name` |
 | `Frequent` | 按 `ClickCount` 倒序，再按 `Name` |
 
 `ActivateItem` 打开条目时会 `ClickCount++`，这就是"使用频率"的数据来源。
+
+搜索经过 150 ms 防抖并避开输入法组合阶段；`NameService.Search` 遍历所有分组，匹配名称、完整拼音和首字母，返回原模型引用。清空搜索恢复 `_currentGroupId`，搜索结果不会写入数据树，搜索时只允许拖入分组以避免误改父级顺序。
 
 ## 六、设置窗口
 
@@ -251,15 +255,17 @@ App.ApplyThemeEverywhere()      主面板 + 设置窗口 + 托盘图标一起刷
 `CurrentAccent` 在高对比度下强制用系统高亮色，否则按 `UseAccentColor` 取系统强调色或默认蓝。
 
 `BackdropService` 分两条路：
-- Windows 11（build ≥ 22000）：`DwmSetWindowAttribute` 设 `DWMWA_SYSTEMBACKDROP_TYPE`
+- Windows 11（build ≥ 22621）：`DwmSetWindowAttribute` 设 `DWMWA_SYSTEMBACKDROP_TYPE`
   为 Mica(2) / Acrylic(3)，并用 `DwmExtendFrameIntoClientArea` 全窗延伸；返回码非 0 说明不支持，走降级。
 - 其他版本：`SetWindowCompositionAttribute` + `AccentPolicy` 做模糊或半透明，
   高对比度或选纯色时直接不透明。
 
+材质模式下 `HwndSource.CompositionTarget.BackgroundColor` 与窗口背景设为透明，面板和菜单仅保留轻微着色；系统关闭透明效果时使用纯色。画刷颜色通过 `ColorAnimation` 平滑过渡。
+
 ## 八、托盘
 
 `TrayService` 用 WinForms 的 `NotifyIcon`（WPF 没有托盘 API），
-但右键菜单是 WPF 的 `ContextMenu`，这样能复用 `Theme/Styles.xaml` 里的
+右键菜单是自定义 WPF `MaterialMenu`，以独立非分层窗口承载，支持与面板相同的 DWM 材质，并复用 `Theme/styles.xaml` 里的
 `DeskMenuStyle` / `DeskMenuItemStyle`，视觉和面板一致。
 
 对外只暴露事件（`ToggleRequested` / `SettingsRequested` / `OpenDataFolderRequested` /

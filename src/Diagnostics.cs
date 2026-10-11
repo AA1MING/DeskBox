@@ -152,7 +152,7 @@ public static class Diagnostics
 			string text5 = Path.Combine(text, "记事本.lnk");
 			string text6 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "notepad.exe");
 			Check("创建快捷方式", ShortcutService.Create(text5, text6), text5);
-			Check("快捷方式能解析出目标", ShortcutService.Resolve(text5)?.Target == text6, ShortcutService.Resolve(text5)?.Target ?? "null");
+			Check("快捷方式能解析出目标", string.Equals(ShortcutService.Resolve(text5)?.Target, text6, StringComparison.OrdinalIgnoreCase), ShortcutService.Resolve(text5)?.Target ?? "null");
 			List<DeskItem> list = ItemStore.ImportAll(new string[4] { text2, text3, text4, text5 });
 			Check("导入返回 4 个条目", list.Count == 4, "实际 " + list.Count);
 			Check("原位置的 txt 已被移走", !File.Exists(text2));
@@ -162,13 +162,13 @@ public static class Diagnostics
 			Check("txt 已进入收纳仓库", deskItem != null && deskItem.StoredName != null && File.Exists(Path.Combine(AppPaths.ItemsDir, deskItem.StoredName)), deskItem?.StoredName ?? "null");
 			DeskItem deskItem2 = list.FirstOrDefault((DeskItem i) => i.Kind == ItemKind.Shortcut);
 			Check("lnk 识别为快捷方式", deskItem2 != null && deskItem2.Kind == ItemKind.Shortcut, deskItem2?.Kind.ToString() ?? "null");
-			Check("lnk 记下了解析后的目标", deskItem2?.Target == text6, deskItem2?.Target ?? "null");
+			Check("lnk 记下了解析后的目标", string.Equals(deskItem2?.Target, text6, StringComparison.OrdinalIgnoreCase), deskItem2?.Target ?? "null");
 			DeskItem deskItem3 = list.FirstOrDefault((DeskItem i) => i.IsGroup);
 			Check("文件夹变成了分组", deskItem3 != null, deskItem3?.Name ?? "null");
 			Check("分组的子项被收纳进来", deskItem3 != null && deskItem3.Children.Count == 1, "子项 " + (deskItem3?.Children.Count ?? (-1)));
 			ConfigService.Current.Items.Clear();
 			ConfigService.Current.Items.AddRange(list);
-			List<DeskItem> list2 = ConfigService.Current.Items.OrderBy((DeskItem i) => i.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+			List<DeskItem> list2 = NameService.Sort(ConfigService.Current.Items, "Name");
 			Check("按名称排序不丢项", list2.Count == list.Count);
 			if (deskItem != null)
 			{

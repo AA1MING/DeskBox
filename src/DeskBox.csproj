@@ -13,7 +13,7 @@
     <ApplicationIcon>assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <Version>1.0.1</Version>
+    <Version>1.1.0</Version>
     <Product>DeskBox</Product>
     <AssemblyTitle>DeskBox 桌面收纳盒</AssemblyTitle>
     <Company>DeskBox</Company>
@@ -22,6 +22,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="assets\pinyin.tsv" LogicalName="DeskBox.Pinyin.tsv" />
+    <EmbeddedResource Include="..\THIRD_PARTY_NOTICES.md" LogicalName="DeskBox.ThirdPartyNotices.md" />
     <!-- 嵌入资源：与原始程序集保持一致 -->
     <EmbeddedResource Include="assets\app.ico" LogicalName="assets/app.ico" />
     <EmbeddedResource Include="assets\app.preview.png" LogicalName="assets/app.preview.png" />

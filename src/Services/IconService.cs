@@ -19,13 +19,40 @@ public static class IconService
 
 	public static Color MonochromeColor { get; set; } = Colors.White;
 
+	private static readonly object LoadLock = new();
+	private static double RenderScale = 1;
+	public static ImageSource Placeholder { get; } = CreatePlaceholder();
+	private static ImageSource CreatePlaceholder()
+	{
+		var drawing = new GeometryDrawing(new SolidColorBrush(Color.FromRgb(110, 130, 155)), null,
+			Geometry.Parse("M4,2 L20,2 28,10 28,30 4,30 Z M20,2 L20,10 28,10"));
+		var image = new DrawingImage(drawing);
+		image.Freeze();
+		return image;
+	}
+
+	public static ImageSource? GetForItem(DeskBox.Models.DeskItem item, int size, bool mono, Color color, double dpi)
+	{
+		lock (LoadLock)
+		{
+			Monochrome = mono;
+			MonochromeColor = color;
+			RenderScale = dpi;
+			if (item.IsGroup) return GetFolderIcon(size) ?? Placeholder;
+			string stored = AppPaths.StoredFilePath(item);
+			if (!string.IsNullOrEmpty(stored) && File.Exists(stored)) return GetIcon(stored, size) ?? Placeholder;
+			if (!string.IsNullOrEmpty(item.Target)) return GetIcon(item.Target, size) ?? Placeholder;
+			return GetIconFallback(item.StoredName ?? ".exe", size) ?? Placeholder;
+		}
+	}
+
 	private static string CacheKey(string path, int size)
 	{
 		if (!Monochrome)
 		{
-			return $"{path}|{size}";
+			return $"{path}|{size}|{RenderScale}";
 		}
-		return $"{path}|{size}|{MonochromeColor}";
+		return $"{path}|{size}|{RenderScale}|mono|{MonochromeColor}";
 	}
 
 	private static ImageSource LineArt(BitmapSource source, Color color)
@@ -252,6 +279,7 @@ public static class IconService
 	private static ImageSource? LoadFromShell(string path, int size)
 	{
 		nint phbm = IntPtr.Zero;
+        Native.IShellItemImageFactory? shellItemImageFactory = null;
 		try
 		{
 			if (!File.Exists(path) && !Directory.Exists(path))
@@ -259,13 +287,13 @@ public static class IconService
 				return null;
 			}
 			Guid riid = new Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b");
-			Native.IShellItemImageFactory shellItemImageFactory = Native.SHCreateItemFromParsingName(path, IntPtr.Zero, riid);
+			shellItemImageFactory = Native.SHCreateItemFromParsingName(path, IntPtr.Zero, riid);
 			if (shellItemImageFactory == null)
 			{
 				return null;
 			}
 			int num = Math.Max(size, 48) * 2;
-			shellItemImageFactory.GetImage(new Native.SIZE(num, num), 1, out phbm);
+			shellItemImageFactory.GetImage(new Native.SIZE(num, num), 5, out phbm);
 			if (phbm == IntPtr.Zero)
 			{
 				return null;
@@ -285,6 +313,7 @@ public static class IconService
 			{
 				Native.DeleteObject(phbm);
 			}
+            if (shellItemImageFactory != null) Marshal.FinalReleaseComObject(shellItemImageFactory);
 		}
 	}
 
@@ -324,15 +353,7 @@ public static class IconService
 
 	private static ImageSource Resize(BitmapSource source, int size)
 	{
-		double num = 1.0;
-		try
-		{
-			num = VisualTreeHelper.GetDpi(Application.Current?.MainWindow ?? new Window()).DpiScaleX;
-		}
-		catch
-		{
-			num = 1.0;
-		}
+		double num = RenderScale;
 		int num2 = (int)Math.Round((double)size * num);
 		if (num2 <= 0)
 		{

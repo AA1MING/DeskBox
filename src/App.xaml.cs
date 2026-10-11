@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using ContextMenu = DeskBox.Controls.MaterialMenu;
 using System.Runtime.CompilerServices;
 using System.Security.Principal;
 using System.Text;
@@ -69,6 +70,7 @@ public partial class App : Application
 		}
 		AppPaths.Init();
 		ConfigService.Load();
+        bool firstUse = !ConfigService.Current.HasStarted;
 		ThemeService.Refresh();
 		WriteStartupReport();
 		ThemeService.Changed += OnThemeServiceChanged;
@@ -185,7 +187,7 @@ public partial class App : Application
 			Shutdown();
 			return;
 		}
-		if ((AppPaths.Degraded || !AppPaths.DataDirUsable) && !flag2 && !array.Contains("--relaunched", StringComparer.OrdinalIgnoreCase) && MessageBox.Show(AppPaths.DataDirUsable ? "DeskBox 现在运行在受限环境里（被其他程序以沙箱方式启动）。\n\n这种状态下：从桌面拖进来的文件搬不动，开机自启也设置不了。\n\n要现在用正常方式重新启动一次吗？（推荐）" : "DeskBox 找不到任何可写的数据目录，现在收纳的东西重启后就会丢失。\n\n原因是程序被别的工具以沙箱方式启动，系统把用户目录和程序目录的写入都拒绝了。\n\n请用正常方式重新启动一次（推荐），或自己关掉后用文件资源管理器双击 DeskBox.exe。", "DeskBox", MessageBoxButton.OKCancel, MessageBoxImage.Exclamation) == MessageBoxResult.OK && TryRelaunchUnrestricted())
+		if ((AppPaths.Degraded || !AppPaths.DataDirUsable) && !flag2 && !array.Contains("--relaunched", StringComparer.OrdinalIgnoreCase) && MessageBox.Show(AppPaths.DataDirUsable ? "当前只能使用临时数据目录。\n是否重新启动 DeskBox？" : "数据目录不可写，无法保存收纳内容。\n是否重新启动 DeskBox？", "DeskBox", MessageBoxButton.OKCancel, MessageBoxImage.Exclamation) == MessageBoxResult.OK && TryRelaunchUnrestricted())
 		{
 			Shutdown();
 			return;
@@ -228,28 +230,14 @@ public partial class App : Application
 		_tray.AutoStartStateProvider = AutoStartService.IsEnabled;
 		_tray.AutoStartSetter = ToggleAutoStart;
 		ApplyThemeEverywhere();
-		if (AppPaths.Degraded)
-		{
-			_tray.ShowBalloon("DeskBox 正运行在受限环境", "系统不允许写入正常的数据目录（" + AppPaths.DegradedReason + "），数据暂时放在程序目录旁边，开机自启等系统设置也可能无法修改。建议关掉程序，直接在文件资源管理器里双击 DeskBox.exe 运行。");
-			if (!ConfigService.Current.RestrictedNoticeShown)
-			{
-				ConfigService.Current.RestrictedNoticeShown = true;
-				ConfigService.Save();
-				MessageBox.Show("DeskBox 现在运行在受限环境里。\n\n系统不允许它写入正常的数据目录：\n" + AppPaths.DegradedReason + "\n\n于是数据被临时放在了程序目录旁边的 DeskBoxData 文件夹，并且「开机自启动」这类系统设置会失败。\n\n原因通常是它被别的工具以沙箱方式启动（例如从某个管理界面里点开）。\n解决办法：关掉当前程序，打开文件资源管理器，直接双击 DeskBox.exe 运行。恢复正常运行后，之前的数据会自动迁移回正式目录。", "DeskBox", MessageBoxButton.OK, MessageBoxImage.Asterisk);
-			}
-		}
-		else if (string.IsNullOrWhiteSpace(ConfigService.Current.Hotkey))
-		{
-			_tray.ShowBalloon("DeskBox 已经驻留在托盘", "还没有设置呼出热键。左键单击托盘图标即可打开面板，或到“设置”里记录一个热键。");
-		}
-		else if (!flag2)
-		{
-			_tray.ShowBalloon("DeskBox 已启动", "按 " + ConfigService.Current.Hotkey + " 随时呼出面板。");
-		}
-		if (!flag2 && !ConfigService.Current.Items.Any())
-		{
-			_panel.ShowPanel();
-		}
+        if (AppPaths.Degraded && !ConfigService.Current.RestrictedNoticeShown)
+        {
+            ConfigService.Current.RestrictedNoticeShown = true;
+            _tray.ShowBalloon("正在使用临时数据目录", "请通过文件资源管理器重新启动 DeskBox。");
+        }
+        if (!flag2 && firstUse) _panel.ShowPanel();
+        ConfigService.Current.HasStarted = true;
+        ConfigService.Save();
 	}
 
 	private void StartShowSignalThread()
@@ -343,12 +331,12 @@ public partial class App : Application
 		{
 			ConfigService.Current.AutoStart = wanted;
 			ConfigService.Save();
-			_tray?.ShowBalloon("DeskBox", wanted ? ("已开启开机自启动（" + AutoStartService.Mechanism + "）") : "已关闭开机自启动");
+			_tray?.ShowBalloon("DeskBox", wanted ? ("已开启开机启动") : "已关闭开机自启动");
 		}
 		else
 		{
 			_tray?.ShowBalloon("开机自启设置失败", AutoStartService.LastError);
-			MessageBox.Show("设置开机自启动失败。\n\n原因：" + AutoStartService.LastError + "\n\n如果程序是被别的工具以沙箱方式启动的，系统会拒绝写注册表和启动文件夹；请直接在文件资源管理器里双击 DeskBox.exe 运行后再试。", "DeskBox", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+			MessageBox.Show("开机启动设置失败。\n" + AutoStartService.LastError + "\n请通过文件资源管理器重新启动后重试。", "DeskBox", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 		}
 	}
 
@@ -360,6 +348,7 @@ public partial class App : Application
 	public void ApplyThemeEverywhere()
 	{
 		ThemeBrushes.Apply();
+        foreach (Window window in Windows) BackdropService.Apply(window, ConfigService.Current.Backdrop, ThemeBrushes.IsDarkNow);
 		_panel?.ApplyTheme();
 		_tray?.ApplyTheme(ThemeBrushes.IsDarkNow, ThemeBrushes.CurrentAccent);
 		SettingsWindow.Current?.ApplyTheme();
@@ -459,6 +448,7 @@ public partial class App : Application
 
 	public void OpenSettings()
 	{
+        _panel?.HidePanel();
 		SettingsWindow current = SettingsWindow.Current;
 		if (current == null)
 		{

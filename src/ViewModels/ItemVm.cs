@@ -18,15 +18,34 @@ public sealed class ItemVm : INotifyPropertyChanged
 
 	public bool IsGroup => Model.IsGroup;
 
-	public ImageSource? Icon { get; }
+	public ImageSource? Icon { get; private set; }
 
-	public double IconSize { get; }
+	public double IconSize { get; private set; }
 
-	public double CellWidth { get; }
+	public double CellWidth { get; private set; }
 
-	public double CellHeight { get; }
+	public double CellHeight { get; private set; }
 
-	public Visibility LabelVisibility { get; }
+	public Visibility LabelVisibility { get; private set; }
+
+	public void SetIcon(ImageSource? icon)
+	{
+		Icon = icon;
+		OnPropertyChanged(nameof(Icon));
+	}
+
+	public void UpdateLayout(int size, bool labels)
+	{
+		IconSize = size;
+		CellWidth = size + 46;
+		CellHeight = size + (labels ? 46 : 22);
+		LabelVisibility = labels ? Visibility.Visible : Visibility.Collapsed;
+		OnPropertyChanged(nameof(IconSize));
+		OnPropertyChanged(nameof(CellWidth));
+		OnPropertyChanged(nameof(CellHeight));
+		OnPropertyChanged(nameof(LabelVisibility));
+		RaiseNameChanged();
+	}
 
 	public bool IsDropTarget
 	{

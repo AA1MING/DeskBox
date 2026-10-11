@@ -4,6 +4,8 @@ namespace DeskBox.Models;
 
 public sealed class AppConfig
 {
+	public bool HasStarted { get; set; }
+
 	public int Version { get; set; } = 1;
 
 	public string ThemeMode { get; set; } = "System";

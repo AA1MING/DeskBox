@@ -1,18 +1,32 @@
 using System;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Markup;
 using System.Windows.Media;
 using DeskBox.Interop;
 using DeskBox.Theme;
+using DeskBox.Services;
 
 namespace DeskBox;
 
 public partial class InputDialog : Window, IComponentConnector
 {
+    private bool _closing;
 	private InputDialog()
 	{
 		InitializeComponent();
+        Motion.AttachWindow(this, DialogContent, false);
+        Closing += (_, e) =>
+        {
+            if (_closing || !IsVisible || Dispatcher.HasShutdownStarted) return;
+            e.Cancel = true;
+            _closing = true;
+            IsHitTestVisible = false;
+            Motion.Fade(DialogContent, 0, Close);
+        };
+        DialogContent.SetResourceReference(Panel.BackgroundProperty, "PanelFill");
+        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) { e.Handled = true; Cancel_Click(this, new RoutedEventArgs()); } };
 		SourceInitialized += delegate
 		{
 			ApplyTheme();
@@ -48,27 +62,21 @@ public partial class InputDialog : Window, IComponentConnector
 		return inputDialog.InputBox.Text;
 	}
 
-	private void ApplyTheme()
-	{
-		bool isDarkNow = ThemeBrushes.IsDarkNow;
-		nint handle = new WindowInteropHelper(this).Handle;
-		if (handle != IntPtr.Zero)
-		{
-			int value = (isDarkNow ? 1 : 0);
-			Native.DwmSetWindowAttribute(handle, 20, ref value, 4);
-		}
-		Background = (Brush)Application.Current.Resources["WindowFill"];
-	}
+    private void ApplyTheme() => BackdropService.Apply(this, ConfigService.Current.Backdrop, ThemeBrushes.IsDarkNow);
 
 	private void Ok_Click(object sender, RoutedEventArgs e)
 	{
-		DialogResult = true;
-		Close();
+		if (_closing) return;
+        _closing = true;
+		IsHitTestVisible = false;
+        Motion.Fade(DialogContent, 0, () => DialogResult = true);
 	}
 
 	private void Cancel_Click(object sender, RoutedEventArgs e)
 	{
-		DialogResult = false;
-		Close();
+		if (_closing) return;
+        _closing = true;
+		IsHitTestVisible = false;
+        Motion.Fade(DialogContent, 0, () => DialogResult = false);
 	}
 }

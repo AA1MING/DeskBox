@@ -364,6 +364,9 @@ internal static class Native
 	[DllImport("dwmapi.dll")]
 	public static extern int DwmIsCompositionEnabled(out bool enabled);
 
+	[DllImport("dwmapi.dll")]
+	public static extern int DwmFlush();
+
 	[DllImport("user32.dll", SetLastError = true)]
 	public static extern int SetWindowCompositionAttribute(nint hwnd, ref WINDOWCOMPOSITIONATTRIBDATA data);
 

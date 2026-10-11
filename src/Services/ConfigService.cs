@@ -27,8 +27,13 @@ public static class ConfigService
 		{
 			if (File.Exists(AppPaths.ConfigFile))
 			{
-				Current = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(AppPaths.ConfigFile), Options) ?? new AppConfig();
+				string json = File.ReadAllText(AppPaths.ConfigFile);
+                Current = JsonSerializer.Deserialize<AppConfig>(json, Options) ?? new AppConfig();
+                // Existing installations predate the startup flag; do not show an upgrade as a first run.
+                using var document = JsonDocument.Parse(json);
+                if (!document.RootElement.TryGetProperty(nameof(AppConfig.HasStarted), out _)) Current.HasStarted = true;
 			}
+            else Current = new AppConfig();
 		}
 		catch (Exception ex)
 		{

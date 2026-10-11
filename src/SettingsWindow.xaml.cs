@@ -25,6 +25,14 @@ public partial class SettingsWindow : Window, IComponentConnector
 	public SettingsWindow()
 	{
 		InitializeComponent();
+        Motion.AttachWindow(this, SettingsContent);
+        SourceInitialized += (_, _) =>
+        {
+            var point = System.Windows.Forms.Cursor.Position;
+            var screen = System.Windows.Forms.Screen.FromPoint(point);
+            double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleY;
+            SettingsContent.MaxHeight = Math.Max(300, screen.WorkingArea.Height / dpi - 80);
+        };
 		Current = this;
 		LoadFromConfig();
 		_loading = false;
@@ -74,29 +82,20 @@ public partial class SettingsWindow : Window, IComponentConnector
 		VersionText.Text = "v" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0");
 	}
 
-	private void UpdateHotkeyDisplay()
-	{
-		string hotkey = ConfigService.Current.Hotkey;
-		HotkeyBox.Text = HotkeyService.DisplayName(hotkey);
-		HotkeyHint.Text = (string.IsNullOrWhiteSpace(hotkey) ? "当前没有设置热键：可以左键单击托盘图标打开面板。" : ("按 " + HotkeyService.DisplayName(hotkey) + " 可以随时呼出面板；要修改就点一下输入框重新按一次，按 Backspace 可以清空。"));
-	}
+    private void UpdateHotkeyDisplay()
+    {
+        string hotkey = ConfigService.Current.Hotkey;
+        HotkeyBox.Text = HotkeyService.DisplayName(hotkey);
+        HotkeyHint.Text = string.IsNullOrWhiteSpace(hotkey) ? "点击输入框录入快捷键" : "点击输入框更改，Backspace 清空";
+    }
 
-	public void ApplyTheme()
-	{
-		bool isDarkNow = ThemeBrushes.IsDarkNow;
-		nint handle = new WindowInteropHelper(this).Handle;
-		if (handle != IntPtr.Zero)
-		{
-			int value = (isDarkNow ? 1 : 0);
-			Native.DwmSetWindowAttribute(handle, 20, ref value, 4);
-			if (ThemeService.IsWindows11)
-			{
-				int value2 = 2;
-				Native.DwmSetWindowAttribute(handle, 33, ref value2, 4);
-			}
-		}
-		Background = (Brush)Application.Current.Resources["WindowFill"];
-	}
+    public void ApplyTheme()
+    {
+        string actual = BackdropService.Apply(this, ConfigService.Current.Backdrop, ThemeBrushes.IsDarkNow);
+        bool fallback = ConfigService.Current.Backdrop != "Solid" && actual == "Solid";
+        BackdropStatus.Text = !BackdropService.TransparencyEnabled ? "系统透明效果未开启" : "当前使用纯色背景";
+        BackdropStatus.Visibility = fallback ? Visibility.Visible : Visibility.Collapsed;
+    }
 
 	private void Save()
 	{
@@ -193,7 +192,7 @@ public partial class SettingsWindow : Window, IComponentConnector
 
 	private void HotkeyBox_GotFocus(object sender, KeyboardFocusChangedEventArgs e)
 	{
-		HotkeyHint.Text = "现在直接按下组合键，例如 Ctrl+Alt+空格；按 Backspace 清空。";
+		HotkeyHint.Text = "按下组合键，Backspace 清空";
 	}
 
 	private void HotkeyBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -209,7 +208,7 @@ public partial class SettingsWindow : Window, IComponentConnector
 		// 有符号比较会误判成修饰键，导致热键永远录不进去。
 		if ((uint)(key - Key.LWin) <= 1 || (uint)(key - Key.LeftShift) <= 5)
 		{
-			HotkeyHint.Text = "继续按下一个字母 / 数字 / 功能键…";
+			HotkeyHint.Text = "继续按下主键…";
 		}
 		else if (key == Key.Back || key == Key.Delete)
 		{
@@ -221,7 +220,7 @@ public partial class SettingsWindow : Window, IComponentConnector
 
 			if (modifiers == 0)
 			{
-				HotkeyHint.Text = "热键至少要带一个 Ctrl / Alt / Shift / Win 修饰键，否则会干扰正常打字。";
+				HotkeyHint.Text = "请加入 Ctrl、Alt、Shift 或 Win";
 			}
 			else
 			{
@@ -243,18 +242,12 @@ public partial class SettingsWindow : Window, IComponentConnector
 		SetHotkey(string.Empty);
 	}
 
-	private void UpdateAutoStartStatus()
-	{
-		if (AutoStartService.IsEnabled())
-		{
-			string mechanism = AutoStartService.Mechanism;
-			AutoStartStatus.Text = (AutoStartService.IsDisabledInWindows() ? ("已经写入（" + mechanism + "），但在 Windows 的“启动应用”列表里被关掉了：打开 任务管理器 → 启动应用，把 DeskBox 改成“已启用”。") : ("已启用（" + mechanism + "）。开机后会静默驻留托盘，不弹窗、不抢焦点。"));
-		}
-		else
-		{
-			AutoStartStatus.Text = (string.IsNullOrEmpty(AutoStartService.LastError) ? "未启用。勾选后开机会自动在托盘待命。" : ("上次开启失败：" + AutoStartService.LastError));
-		}
-	}
+    private void UpdateAutoStartStatus()
+    {
+        AutoStartStatus.Text = AutoStartService.IsEnabled()
+            ? (AutoStartService.IsDisabledInWindows() ? "请在任务管理器中启用 DeskBox 启动项" : "开机后驻留托盘")
+            : (string.IsNullOrEmpty(AutoStartService.LastError) ? "" : "开启失败：" + AutoStartService.LastError);
+    }
 
 	private void AutoStart_Changed(object sender, RoutedEventArgs e)
 	{
@@ -267,7 +260,7 @@ public partial class SettingsWindow : Window, IComponentConnector
 				AutoStartCheck.IsChecked = AutoStartService.IsEnabled();
 				_loading = false;
 				UpdateAutoStartStatus();
-				MessageBox.Show(this, "设置开机自启动失败。\n\n原因：" + AutoStartService.LastError + "\n\n最常见的情况是：程序运行在受限环境里（例如被别的工具以沙箱方式启动），系统既不允许写注册表，也不允许写启动文件夹。\n\n请关掉这个窗口，直接在文件资源管理器里双击 DeskBox.exe 运行，然后再试一次。", "DeskBox", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+				MessageBox.Show(this, "开机启动设置失败。\n" + AutoStartService.LastError + "\n请通过文件资源管理器重新启动后重试。", "DeskBox", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			}
 			else
 			{

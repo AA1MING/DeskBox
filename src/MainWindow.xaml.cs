@@ -5,6 +5,9 @@ using System.Diagnostics;
 using Rectangle = System.Drawing.Rectangle;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Threading;
+using ContextMenu = DeskBox.Controls.MaterialMenu;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -41,6 +44,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 	private bool _dialogOpen;
 
 	private bool _menuOpen;
+    private int _openMenuCount;
 
 	private bool _pinned;
 
@@ -53,6 +57,16 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 	private DateTime? _releasedAt;
 
 	private int _visibilityToken;
+    private bool _panelOpen;
+    private string _searchQuery = "";
+    private readonly DispatcherTimer _searchTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
+    private readonly Dictionary<string, ItemVm> _viewModels = new();
+    private readonly Dictionary<string, Task<ImageSource?>> _iconTasks = new();
+    private readonly Dictionary<string, string> _requestedIcons = new();
+    private Task _iconsReady = Task.CompletedTask;
+    private readonly SemaphoreSlim _iconLoader = new(1, 1);
+    private bool _searchComposing;
+    private bool _dropOverlayShowing;
 
 	public bool CaptureMode { get; set; }
 
@@ -64,6 +78,9 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		_pinned = ConfigService.Current.PinnedOpen;
 		SourceInitialized += OnSourceInitialized;
 		Deactivated += OnDeactivated;
+        _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); ApplySearch(); };
+        TextCompositionManager.AddPreviewTextInputStartHandler(SearchBox, (_, _) => { _searchComposing = true; _searchTimer.Stop(); });
+        TextCompositionManager.AddPreviewTextInputHandler(SearchBox, (_, _) => { _searchComposing = false; _searchTimer.Start(); });
 		PreviewKeyDown += OnPreviewKeyDown;
 	}
 
@@ -164,17 +181,36 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 	private void UpdatePinVisual()
 	{
 		PinButton.Content = (_pinned ? "\ue77a" : "\ue718");
-		PinButton.ToolTip = (_pinned ? "已固定：点面板外部不会自动收起，再点一次取消" : "固定住面板，方便从桌面连续拖东西进来");
+		PinButton.ToolTip = (_pinned ? "取消固定" : "固定面板");
 		PinButton.Background = (System.Windows.Media.Brush)FindResource(_pinned ? "AccentFill" : "ControlFill");
 		PinButton.Foreground = (System.Windows.Media.Brush)FindResource(_pinned ? "AccentText" : "TextFill");
 	}
 
 	private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
 	{
-		if ((int)e.Key == 13)
+        if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            return;
+        }
+        if (e.Key == Key.Enter && SearchBox.IsKeyboardFocusWithin)
+        {
+            e.Handled = true;
+            ApplySearch();
+            if (_items.Count > 0) ActivateItem(_items[0]);
+            return;
+        }
+		if (e.Key == Key.Escape)
 		{
 			e.Handled = true;
-			if (_currentGroupId != null)
+			if (SearchBox.Text.Length > 0)
+            {
+                SearchBox.Clear();
+                ApplySearch();
+            }
+            else if (_currentGroupId != null)
 			{
 				Navigate(null);
 			}
@@ -194,124 +230,86 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		}
 		UpdatePinVisual();
 		Refresh();
+        if (IsVisible) PositionPanel();
 	}
 
-	public void TogglePanel()
-	{
-		if (IsVisible)
-		{
-			HidePanel();
-		}
-		else
-		{
-			ShowPanel();
-		}
-	}
+    public void TogglePanel()
+    {
+        if (_panelOpen) HidePanel(); else ShowPanel();
+    }
 
-	public void ShowPanel()
-	{
-		StopHideWatch();
-		Refresh();
-		int token = ++_visibilityToken;
-		if (!IsVisible)
-		{
-			PositionPanel(ensureVisible: false);
-			Show();
-		}
-		else
-		{
-			PositionPanel();
-		}
-		Topmost = true;
-		Activate();
-		AnimatePanelIn(token);
-		((DispatcherObject)this).Dispatcher.BeginInvoke((Delegate)(Action)(() =>
-		{
-			Activate();
-			Focus();
-		}), (DispatcherPriority)5, Array.Empty<object>());
-	}
+    public async void ShowPanel()
+    {
+        int token = ++_visibilityToken;
+        _panelOpen = true;
+        StopHideWatch();
+        try
+        {
+            new WindowInteropHelper(this).EnsureHandle();
+            bool hidden = !IsVisible;
+            if (hidden)
+            {
+                RootBorder.BeginAnimation(UIElement.OpacityProperty, null);
+                RootBorder.Opacity = 0;
+                BackdropService.Cloak(this, true);
+            }
+            Refresh();
+            PositionPanel(false);
+            await Task.WhenAny(_iconsReady, Task.Delay(3000));
+            if (token != _visibilityToken || !_panelOpen || Dispatcher.HasShutdownStarted) return;
+            if (hidden) Show();
+            await Dispatcher.InvokeAsync(() => UpdateLayout(), DispatcherPriority.ContextIdle);
+            if (token != _visibilityToken || !_panelOpen) return;
+            PositionPanel(false);
+            Native.DwmFlush();
+            BackdropService.Cloak(this, false);
+            Topmost = true;
+            Activate();
+            RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            RootScale.ScaleX = RootScale.ScaleY = 1;
+            if (hidden) RootSlide.Y = 8;
+            RootBorder.BeginAnimation(UIElement.OpacityProperty, Motion.Tween(RootBorder.Opacity, 1));
+            RootSlide.BeginAnimation(TranslateTransform.YProperty, Motion.Tween(RootSlide.Y, 0));
+            Focus();
+        }
+        catch (Exception ex)
+        {
+            _panelOpen = false;
+            BackdropService.Cloak(this, false);
+            AppPaths.Log("显示面板失败：" + ex);
+        }
+    }
 
-	public void HidePanel()
-	{
-		if (IsVisible)
-		{
-			AnimatePanelOut(++_visibilityToken);
-		}
-	}
+    public void HidePanel()
+    {
+        _panelOpen = false;
+        int token = ++_visibilityToken;
+        if (!IsVisible) return;
+        RootBorder.BeginAnimation(UIElement.OpacityProperty, Motion.Tween(RootBorder.Opacity, 0, () =>
+        {
+            if (token == _visibilityToken && !_panelOpen) Hide();
+        }));
+        RootSlide.BeginAnimation(TranslateTransform.YProperty, Motion.Tween(RootSlide.Y, 8));
+    }
 
-	private void PositionPanel(bool ensureVisible = true)
-	{
-		try
-		{
-			Rectangle workingArea = Screen.FromPoint(System.Windows.Forms.Cursor.Position).WorkingArea;
-			int num = Math.Max(560, (int)((double)workingArea.Width * ConfigService.Current.WidthRatio));
-			int num2 = Math.Max(400, (int)((double)workingArea.Height * ConfigService.Current.HeightRatio));
-			int x = workingArea.X + (workingArea.Width - num) / 2;
-			int y = workingArea.Y + (workingArea.Height - num2) / 2;
-			uint flags = (ensureVisible ? 80u : 16u);
-			Native.SetWindowPos(new WindowInteropHelper(this).Handle, Native.HWND_TOPMOST, x, y, num, num2, flags);
-		}
-		catch (Exception ex)
-		{
-			AppPaths.Log("定位面板失败：" + ex.Message);
-		}
-	}
-
-	private static TimeSpan Ms(double ms)
-	{
-		return TimeSpan.FromMilliseconds(ms);
-	}
-
-	private void AnimatePanelIn(int token)
-	{
-		CubicEase easingFunction = new CubicEase
-		{
-			EasingMode = EasingMode.EaseOut
-		};
-		RootBorder.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.0, 1.0, Ms(200.0))
-		{
-			EasingFunction = easingFunction
-		});
-		RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.965, 1.0, Ms(230.0))
-		{
-			EasingFunction = easingFunction
-		});
-		RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.965, 1.0, Ms(230.0))
-		{
-			EasingFunction = easingFunction
-		});
-		RootSlide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(16.0, 0.0, Ms(230.0))
-		{
-			EasingFunction = easingFunction
-		});
-	}
-
-	private void AnimatePanelOut(int token)
-	{
-		CubicEase easingFunction = new CubicEase
-		{
-			EasingMode = EasingMode.EaseIn
-		};
-		DoubleAnimation doubleAnimation = new DoubleAnimation(1.0, 0.0, Ms(130.0))
-		{
-			EasingFunction = easingFunction
-		};
-		DoubleAnimation animation = new DoubleAnimation(RootScale.ScaleX, 0.975, Ms(130.0))
-		{
-			EasingFunction = easingFunction
-		};
-		doubleAnimation.Completed += delegate
-		{
-			if (token == _visibilityToken)
-			{
-				Hide();
-			}
-		};
-		RootBorder.BeginAnimation(UIElement.OpacityProperty, doubleAnimation);
-		RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, animation);
-		RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
-	}
+    private void PositionPanel(bool ensureVisible = true)
+    {
+        try
+        {
+            var point = System.Windows.Forms.Cursor.Position;
+            Rectangle work = Screen.FromPoint(point).WorkingArea;
+            int width = Math.Min(work.Width, Math.Max(560, (int)(work.Width * ConfigService.Current.WidthRatio)));
+            int height = Math.Min(work.Height, Math.Max(400, (int)(work.Height * ConfigService.Current.HeightRatio)));
+            var monitor = Native.MonitorFromPoint(new Native.POINT { X = point.X, Y = point.Y }, 2);
+            double scale = Native.GetDpiForMonitor(monitor, 0, out var dpiX, out _) == 0 ? dpiX / 96d : 1;
+            Width = width / scale;
+            Height = height / scale;
+            Native.SetWindowPos(new WindowInteropHelper(this).Handle, Native.HWND_TOPMOST,
+                work.X + (work.Width - width) / 2, work.Y + (work.Height - height) / 2, width, height, 16);
+        }
+        catch (Exception ex) { AppPaths.Log("定位面板失败：" + ex.Message); }
+    }
 
 	private static DeskItem? FindItem(List<DeskItem> list, string id)
 	{
@@ -344,101 +342,150 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		return CurrentGroup()?.Children ?? ConfigService.Current.Items;
 	}
 
-	public void Navigate(string? groupId)
-	{
-		bool flag = groupId != null;
-		bool flag2 = _currentGroupId != null;
-		_currentGroupId = groupId;
-		ConfigService.Current.LastGroupId = groupId;
-		Refresh();
-		AnimateContentIn(flag && !flag2);
-	}
+    public void Navigate(string? groupId)
+    {
+        bool forward = groupId != null && groupId != _currentGroupId;
+        _searchTimer.Stop();
+        _searchQuery = "";
+        SearchBox.Clear();
+        _currentGroupId = groupId;
+        ConfigService.Current.LastGroupId = groupId;
+        ConfigService.Save();
+        Motion.ScrollToTop(Scroll);
+        Refresh();
+        AnimateContentIn(forward);
+    }
 
-	private void AnimateContentIn(bool forward)
-	{
-		CubicEase easingFunction = new CubicEase
-		{
-			EasingMode = EasingMode.EaseOut
-		};
-		double fromValue = (forward ? 34.0 : (-34.0));
-		ItemsArea.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.0, 1.0, Ms(190.0))
-		{
-			EasingFunction = easingFunction
-		});
-		AreaSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(fromValue, 0.0, Ms(240.0))
-		{
-			EasingFunction = easingFunction
-		});
-	}
+    private void AnimateContentIn(bool forward)
+    {
+        ItemsArea.BeginAnimation(UIElement.OpacityProperty, null);
+        ItemsArea.Opacity = 0;
+        ItemsArea.BeginAnimation(UIElement.OpacityProperty, Motion.Tween(0, 1));
+        AreaSlide.BeginAnimation(TranslateTransform.XProperty, Motion.Tween(forward ? 12 : -12, 0));
+    }
 
-	public void Refresh()
-	{
-		AppConfig current = ConfigService.Current;
-		int num = Math.Clamp(current.IconSize, 24, 128);
-		int num2 = num + 46;
-		int num3 = num + (current.ShowLabels ? 46 : 22);
-		IconService.Monochrome = current.MonochromeIcons;
-		IconService.MonochromeColor = (ThemeBrushes.IsDarkNow ? Colors.White : System.Windows.Media.Color.FromRgb(26, 26, 26));
-		_items.Clear();
-		foreach (DeskItem item in CurrentList())
-		{
-			_items.Add(new ItemVm(item, ResolveIcon(item, num), num, num2, num3, current.ShowLabels));
-		}
-		DeskItem deskItem = CurrentGroup();
-		BackButton.Visibility = ((_currentGroupId == null) ? Visibility.Collapsed : Visibility.Visible);
-		TitleText.Text = deskItem?.Name ?? "收纳盒";
-		SubtitleText.Text = ((_items.Count == 0) ? string.Empty : $"{_items.Count} 个项目");
-		EmptyHint.Visibility = ((_items.Count != 0) ? Visibility.Collapsed : Visibility.Visible);
-		if (!AppPaths.DataDirUsable)
-		{
-			SetStatus("⚠ 没有可写的数据目录，现在收纳的东西重启后会丢失 —— 请用正常方式启动 DeskBox");
-		}
-		else if (AppPaths.Degraded)
-		{
-			SetStatus("⚠ 正运行在受限环境，收纳可能只能复制、开机自启会失败（详见托盘提示）");
-		}
-		else
-		{
-			SetStatus(string.Empty);
-		}
-		current.LastGroupId = _currentGroupId;
-	}
+    private void Search_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (SearchHint == null) return;
+        SearchHint.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ClearSearchButton.Visibility = SearchBox.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        _searchTimer.Stop();
+        if (!_searchComposing) _searchTimer.Start();
+    }
 
-	private static ImageSource? ResolveIcon(DeskItem item, int size)
-	{
-		if (item.IsGroup)
-		{
-			return IconService.GetFolderIcon(size);
-		}
-		string text = AppPaths.StoredFilePath(item);
-		if (!string.IsNullOrEmpty(text) && (File.Exists(text) || Directory.Exists(text)))
-		{
-			return IconService.GetIcon(text, size);
-		}
-		if (!string.IsNullOrEmpty(item.Target) && (File.Exists(item.Target) || Directory.Exists(item.Target)))
-		{
-			return IconService.GetIcon(item.Target, size);
-		}
-		return null;
-	}
+    private void ClearSearch_Click(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Clear();
+        ApplySearch();
+        SearchBox.Focus();
+    }
 
-	private void ApplySort(string mode)
-	{
-		ConfigService.Current.SortMode = mode;
-		List<DeskItem> list = CurrentList();
-		StringComparer currentCultureIgnoreCase = StringComparer.CurrentCultureIgnoreCase;
-		List<DeskItem> collection = mode switch
-		{
-			"Name" => list.OrderBy((DeskItem i) => i.Name, currentCultureIgnoreCase).ToList(), 
-			"Type" => list.OrderBy((DeskItem i) => (int)i.Kind).ThenBy((DeskItem i) => i.Name, currentCultureIgnoreCase).ToList(), 
-			"Frequent" => list.OrderByDescending((DeskItem i) => i.ClickCount).ThenBy((DeskItem i) => i.Name, currentCultureIgnoreCase).ToList(), 
-			_ => list.ToList(), 
-		};
-		list.Clear();
-		list.AddRange(collection);
-		ConfigService.Save();
-		Refresh();
-	}
+    private void ApplySearch()
+    {
+        _searchTimer.Stop();
+        string query = SearchBox.Text.Trim();
+        if (query == _searchQuery) return;
+        _searchQuery = query;
+        Motion.ScrollToTop(Scroll);
+        Refresh();
+        AnimateContentIn(true);
+    }
+
+    private void Item_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element && IsVisible) Motion.Enter(element, 4);
+    }
+
+    public void Refresh()
+    {
+        if (ItemsHost == null) return;
+        AppConfig config = ConfigService.Current;
+        int size = Math.Clamp(config.IconSize, 32, 96);
+        bool searching = _searchQuery.Length > 0;
+        var desired = searching ? NameService.Sort(NameService.Search(config.Items, _searchQuery), "Name") : NameService.Sort(CurrentList(), config.SortMode);
+        var positions = new Dictionary<string, Point>();
+        if (IsVisible)
+            for (int i = 0; i < _items.Count; i++)
+                if (ItemsHost.ItemContainerGenerator.ContainerFromIndex(i) is FrameworkElement visual)
+                    positions[_items[i].Model.Id] = visual.TranslatePoint(new Point(), ItemsHost);
+        var ids = desired.Select(i => i.Id).ToHashSet();
+        for (int i = _items.Count - 1; i >= 0; i--) if (!ids.Contains(_items[i].Model.Id)) _items.RemoveAt(i);
+        var loads = new List<Task>();
+        var color = ThemeBrushes.IsDarkNow ? Colors.White : System.Windows.Media.Color.FromRgb(26, 26, 26);
+        double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        for (int index = 0; index < desired.Count; index++)
+        {
+            var model = desired[index];
+            if (!_viewModels.TryGetValue(model.Id, out var vm) || !ReferenceEquals(vm.Model, model))
+                _viewModels[model.Id] = vm = new ItemVm(model, IconService.Placeholder, size, size + 46, size + 46, config.ShowLabels);
+            vm.UpdateLayout(size, config.ShowLabels);
+            int previous = _items.IndexOf(vm);
+            if (previous < 0) _items.Insert(index, vm); else if (previous != index) _items.Move(previous, index);
+            string iconKey = $"{model.Id}|{model.StoredName}|{model.Target}|{size}|{dpi}|{config.MonochromeIcons}|{(config.MonochromeIcons ? color.ToString() : "color")}";
+            if (!_iconTasks.TryGetValue(iconKey, out var task))
+            {
+                bool mono = config.MonochromeIcons;
+                task = LoadIconAsync(model, size, mono, color, dpi);
+                _iconTasks[iconKey] = task;
+            }
+            _requestedIcons[model.Id] = iconKey;
+            loads.Add(UpdateIconAsync(vm, task, iconKey));
+        }
+        _iconsReady = Task.WhenAll(loads);
+        BackButton.Visibility = !searching && _currentGroupId != null ? Visibility.Visible : Visibility.Collapsed;
+        TitleText.Text = searching ? "搜索结果" : CurrentGroup()?.Name ?? "收纳盒";
+        SubtitleText.Text = _items.Count == 0 ? "" : $"{_items.Count} 项";
+        EmptyHint.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyText.Text = searching ? "没有找到匹配的项目" : "拖入文件或快捷方式";
+        EmptyDetail.Text = searching ? "试试名称、拼音或首字母" : "文件将移动到收纳目录";
+        SetStatus(!AppPaths.DataDirUsable ? "数据目录不可写，请重新启动。" : AppPaths.Degraded ? "当前使用临时数据目录。" : "");
+        if (positions.Count > 0)
+        {
+            ItemsHost.UpdateLayout();
+            for (int i = 0; i < _items.Count; i++)
+                if (positions.TryGetValue(_items[i].Model.Id, out var old) && ItemsHost.ItemContainerGenerator.ContainerFromIndex(i) is FrameworkElement visual)
+                {
+                    visual.RenderTransform = Transform.Identity;
+                    var current = visual.TranslatePoint(new Point(), ItemsHost);
+                    var move = new TranslateTransform(old.X - current.X, old.Y - current.Y);
+                    visual.RenderTransform = move;
+                    move.BeginAnimation(TranslateTransform.XProperty, Motion.Tween(move.X, 0));
+                    move.BeginAnimation(TranslateTransform.YProperty, Motion.Tween(move.Y, 0));
+                }
+        }
+    }
+
+    private async Task UpdateIconAsync(ItemVm vm, Task<ImageSource?> task, string key)
+    {
+        try
+        {
+            var icon = await task;
+            if (icon != null && !Dispatcher.HasShutdownStarted && _requestedIcons.TryGetValue(vm.Model.Id, out var requested) && requested == key) vm.SetIcon(icon);
+        }
+        catch (Exception ex) { AppPaths.Log("加载图标失败：" + ex.Message); }
+    }
+
+    private async Task<ImageSource?> LoadIconAsync(DeskItem model, int size, bool mono, System.Windows.Media.Color color, double dpi)
+    {
+        await _iconLoader.WaitAsync();
+        try { return await Task.Run(() => IconService.GetForItem(model, size, mono, color, dpi)); }
+        finally { _iconLoader.Release(); }
+    }
+
+    private void ApplySort(string mode)
+    {
+        ConfigService.Current.SortMode = mode;
+        SortTree(ConfigService.Current.Items, mode);
+        ConfigService.Save();
+        Refresh();
+    }
+
+    private static void SortTree(List<DeskItem> items, string mode)
+    {
+        var sorted = NameService.Sort(items, mode);
+        items.Clear(); items.AddRange(sorted);
+        foreach (var item in items) SortTree(item.Children, mode);
+    }
 
 	private void RemoveFromTree(DeskItem target)
 	{
@@ -487,7 +534,9 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		{
 			item.IsDropTarget = false;
 		}
-		DropOverlay.Visibility = Visibility.Collapsed;
+        _dropOverlayShowing = false;
+        if (DropOverlay.Visibility == Visibility.Visible)
+            Motion.Fade(DropOverlay, 0, () => { if (!_dropOverlayShowing) DropOverlay.Visibility = Visibility.Collapsed; });
 	}
 
 	private void SetDropTarget(ItemVm target)
@@ -500,7 +549,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 
 	private void Area_DragOver(object sender, System.Windows.DragEventArgs e)
 	{
-		bool flag = IsAcceptable(e.Data);
+		bool flag = IsAcceptable(e.Data) && (_searchQuery.Length == 0 || e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop));
 		e.Effects = (flag ? System.Windows.DragDropEffects.Move : System.Windows.DragDropEffects.None);
 		e.Handled = true;
 		if (flag)
@@ -511,7 +560,12 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		{
 			return;
 		}
-		DropOverlay.Visibility = Visibility.Visible;
+        if (!_dropOverlayShowing)
+        {
+            _dropOverlayShowing = true;
+            DropOverlay.Visibility = Visibility.Visible;
+            Motion.Fade(DropOverlay, 1);
+        }
 		foreach (ItemVm item in _items)
 		{
 			item.IsDropTarget = false;
@@ -533,6 +587,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		ClearDropTargets();
 		StopHideWatch();
 		e.Handled = true;
+        if (_searchQuery.Length > 0 && !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
 		if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
 		{
 			ImportFiles((string[])e.Data.GetData(System.Windows.DataFormats.FileDrop), CurrentList(), CurrentList().Count);
@@ -545,7 +600,8 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 			{
 				RemoveFromTree(deskItem);
 				CurrentList().Add(deskItem);
-				Persist();
+				ConfigService.Current.SortMode = "Manual";
+                Persist();
 			}
 		}
 	}
@@ -554,7 +610,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 	{
 		if (sender is Border { Tag: ItemVm tag })
 		{
-			bool flag = IsAcceptable(e.Data);
+			bool flag = IsAcceptable(e.Data) && (_searchQuery.Length == 0 || tag.IsGroup);
 			e.Effects = (flag ? System.Windows.DragDropEffects.Move : System.Windows.DragDropEffects.None);
 			e.Handled = true;
 			if (flag)
@@ -581,6 +637,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		StopHideWatch();
 		Point position = e.GetPosition(border);
 		bool flag = tag.IsGroup && position.X > border.ActualWidth * 0.26 && position.X < border.ActualWidth * 0.74;
+		if (_searchQuery.Length > 0 && !flag) return;
 		bool after = !flag && position.X > border.ActualWidth / 2.0;
 		List<DeskItem> list = (flag ? tag.Model.Children : CurrentList());
 		if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
@@ -608,7 +665,8 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 				{
 					list.Insert(IndexFor(list, tag.Model, after), deskItem);
 				}
-				Persist();
+				ConfigService.Current.SortMode = "Manual";
+                Persist();
 			}
 		}
 	}
@@ -629,17 +687,18 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		List<DeskItem> list = ItemStore.ImportAll(files);
 		if (list.Count == 0)
 		{
-			SetStatus("没能收纳进来：文件可能正被占用，或程序运行在受限环境里。");
+			SetStatus("收纳失败，请检查文件占用或访问权限。");
 			return;
 		}
 		destination.InsertRange(Math.Clamp(index, 0, destination.Count), list);
 		Persist();
-		SetStatus((ItemStore.CopiedInsteadOfMoved > 0) ? $"已收纳 {list.Count} 项；其中 {ItemStore.CopiedInsteadOfMoved} 项只做了复制，原文件仍在原处。" : $"已收纳 {list.Count} 项，原位置的文件已经搬走。");
+		SetStatus((ItemStore.CopiedInsteadOfMoved > 0) ? $"已收纳 {list.Count} 项；{ItemStore.CopiedInsteadOfMoved} 项仅复制，原文件保留。" : $"已移动收纳 {list.Count} 项。");
 	}
 
 	private void Persist()
 	{
-		ConfigService.Save();
+		SortTree(ConfigService.Current.Items, ConfigService.Current.SortMode);
+        ConfigService.Save();
 		Refresh();
 	}
 
@@ -725,7 +784,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		ContextMenu contextMenu = CreateMenu();
 		AddMenuItem(contextMenu, "新建文件夹", () =>
 		{
-			string text = InputDialog.Prompt(this, "新建文件夹", "文件夹名称", "新建文件夹");
+			string text = Prompt("新建文件夹", "文件夹名称", "新建文件夹");
 			if (!string.IsNullOrWhiteSpace(text))
 			{
 				CurrentList().Add(new DeskItem
@@ -808,7 +867,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 
 	private void RenameItem(ItemVm vm)
 	{
-		string text = InputDialog.Prompt(this, "重命名", "新名称", vm.Model.Name);
+		string text = Prompt("重命名", "新名称", vm.Model.Name);
 		if (!string.IsNullOrWhiteSpace(text))
 		{
 			vm.Model.Name = text.Trim();
@@ -821,9 +880,14 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		string message = (vm.IsGroup ? ("确定要删除文件夹“" + vm.Model.Name + "”以及里面的全部项目吗？（文件会进入回收站）") : ("确定要把“" + vm.Model.Name + "”删除到回收站吗？"));
 		if (Confirm(message))
 		{
-			DeleteFilesRecursive(vm.Model);
-			RemoveFromTree(vm.Model);
-			Persist();
+			void Remove()
+            {
+                DeleteFilesRecursive(vm.Model);
+                RemoveFromTree(vm.Model);
+                Persist();
+            }
+            var container = ItemsHost.ItemContainerGenerator.ContainerFromItem(vm) as UIElement;
+            if (container != null) Motion.Fade(container, 0, Remove); else Remove();
 		}
 	}
 
@@ -839,6 +903,17 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 			RecycleBin.Delete(text);
 		}
 	}
+
+    private string? Prompt(string title, string label, string defaultValue)
+    {
+        _dialogOpen = true;
+        try { return InputDialog.Prompt(this, title, label, defaultValue); }
+        finally
+        {
+            _dialogOpen = false;
+            if (IsVisible) Activate();
+        }
+    }
 
 	private bool Confirm(string message)
 	{
@@ -896,6 +971,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 
 	private void OpenMenu(ContextMenu menu, Point? position)
 	{
+        menu.PlacementTarget ??= this;
 		if (position.HasValue)
 		{
 			menu.Placement = PlacementMode.Relative;
@@ -905,10 +981,17 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 			menu.VerticalOffset = value.Y;
 			menu.PlacementTarget = this;
 		}
-		_menuOpen = true;
+		_openMenuCount++;
+        _menuOpen = true;
 		menu.Closed += delegate
 		{
-			_menuOpen = false;
+			_openMenuCount--;
+            _menuOpen = _openMenuCount > 0;
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                if (!_menuOpen && !IsActive && !_pinned && !_dialogOpen && !CaptureMode &&
+                    !OwnedWindows.Cast<Window>().Any(w => w.IsVisible)) HidePanel();
+            }));
 		};
 		menu.IsOpen = true;
 	}
@@ -920,7 +1003,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 
 	private void NewFolder_Click(object sender, RoutedEventArgs e)
 	{
-		string text = InputDialog.Prompt(this, "新建文件夹", "文件夹名称", "新建文件夹");
+		string text = Prompt("新建文件夹", "文件夹名称", "新建文件夹");
 		if (!string.IsNullOrWhiteSpace(text))
 		{
 			CurrentList().Add(new DeskItem
@@ -940,12 +1023,12 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 	private void ShowSortMenu(UIElement? target)
 	{
 		ContextMenu menu = CreateMenu();
-		AddMode("Manual", "保持手动拖拽顺序");
-		AddMode("Name", "按名称排序（A→Z）");
+		AddMode("Manual", "手动排序");
+		AddMode("Name", "按名称（字母 / 拼音）");
 		AddMode("Type", "按类型分组");
 		AddMode("Frequent", "按使用频率");
 		menu.Items.Add(new Separator());
-		AddMenuItem(menu, "紧凑排列（消除空位）", () =>
+		AddMenuItem(menu, "紧凑排列", () =>
 		{
 			List<DeskItem> list = CurrentList();
 			List<DeskItem> collection = list.ToList();

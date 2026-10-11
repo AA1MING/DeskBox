@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using DeskBox.Services;
 
 namespace DeskBox.Theme;
@@ -47,7 +48,7 @@ public static class ThemeBrushes
 		{
 			if (!ThemeService.HighContrast)
 			{
-				return ConfigService.Current.Backdrop == "Solid";
+				return ConfigService.Current.Backdrop == "Solid" || !BackdropService.TransparencyEnabled;
 			}
 			return true;
 		}
@@ -60,8 +61,8 @@ public static class ThemeBrushes
 			bool isDarkNow = IsDarkNow;
 			bool isOpaqueNow = IsOpaqueNow;
 			Color currentAccent = CurrentAccent;
-			byte a = (byte)(isOpaqueNow ? 255u : 217u);
-			byte a2 = (byte)(isOpaqueNow ? 255u : 242u);
+			byte a = (byte)(isOpaqueNow ? 255u : 18u);
+			byte a2 = (byte)(isOpaqueNow ? 255u : 24u);
 			Set("PanelFill", isDarkNow ? Color.FromArgb(a, 32, 32, 32) : Color.FromArgb(a, 246, 246, 246));
 			Set("MenuFill", isDarkNow ? Color.FromArgb(a2, 43, 43, 43) : Color.FromArgb(a2, 251, 251, 251));
 			Set("PanelStroke", isDarkNow ? Color.FromArgb(31, byte.MaxValue, byte.MaxValue, byte.MaxValue) : Color.FromArgb(24, 0, 0, 0));
@@ -81,8 +82,23 @@ public static class ThemeBrushes
 
 	private static void Set(string key, Color color)
 	{
-		SolidColorBrush solidColorBrush = new SolidColorBrush(color);
-		((Freezable)solidColorBrush).Freeze();
-		Application.Current.Resources[key] = solidColorBrush;
+		if (ThemeService.HighContrast)
+		{
+			if (key is "PanelFill" or "MenuFill" or "WindowFill") color = SystemColors.WindowColor;
+			else if (key is "TextFill" or "TextSecondary") color = SystemColors.WindowTextColor;
+		}
+		if (Application.Current.Resources[key] is SolidColorBrush brush && !brush.IsFrozen)
+		{
+			Color previous = brush.Color;
+			if (previous == color) return;
+			brush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+			brush.Color = color;
+			if (!ThemeService.HighContrast)
+				brush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(previous, color, Motion.Duration)
+				{
+					EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }, FillBehavior = FillBehavior.Stop
+				});
+		}
+		else Application.Current.Resources[key] = new SolidColorBrush(color);
 	}
 }

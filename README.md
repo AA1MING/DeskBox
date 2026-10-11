@@ -34,6 +34,9 @@ DeskBox 是一个常驻托盘的 Windows 桌面整理工具：一个全局热键
 - **点击面板外部自动收起**（可在面板标题栏「图钉」按钮固定住不自动隐藏）。
 - **拖拽排序与归档**：按住图标拖动调整顺序，拖到分组图标上即归档进该分组。
 - **一键排序**：手动顺序 / 名称 / 类型 / 使用频率（按点击次数）四种模式。
+- **拼音排序**：按名称排序时文件夹置顶，英文按 A–Z 在前，中文按完整拼音在后；数字按数值排列。
+- **全局搜索**：顶部搜索框可搜索所有分组中的应用、快捷方式、文件和文件夹，支持名称、完整拼音和首字母（例如“微信 / weixin / wx”）。清空后返回原分组；`Ctrl+F` 聚焦搜索，`Enter` 打开首项，`Esc` 清空搜索。
+- **柔和过渡**：面板、分组、设置、菜单、控件反馈、滚动与图标重排统一使用约 300 ms 的过渡。
 - **右键菜单**：打开、以管理员身份运行、打开所在位置、重命名、删除（进回收站）、导出到桌面、属性。
 
 ### 外观
@@ -72,7 +75,7 @@ DeskBox 是一个常驻托盘的 Windows 桌面整理工具：一个全局热键
 
 | 项目 | 要求 |
 | --- | --- |
-| 系统 | Windows 10 1809+ / Windows 11（Mica 材质需要 Windows 11 22000+） |
+| 系统 | Windows 10 1809+ / Windows 11（原生云母与亚克力需要 Windows 11 22621+，旧版本使用模糊回退） |
 | 运行时 | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)（x64） |
 | 权限 | 普通用户即可，**不需要管理员** |
 
@@ -80,7 +83,7 @@ DeskBox 是一个常驻托盘的 Windows 桌面整理工具：一个全局热键
 
 从 [Releases](../../releases) 下载 `DeskBox.exe` 双击运行，或自行编译（见下）。
 
-首次启动如果收纳盒是空的，面板会自动弹出；把桌面上的东西拖进去就行了。
+首次使用时面板会自动弹出；之后启动驻留托盘，通过托盘或热键呼出。
 之后程序常驻托盘，建议到「设置」里录一个呼出热键。
 
 ## 编译
@@ -101,6 +104,14 @@ dotnet publish .\DeskBox.csproj -c Release -r win-x64 --self-contained false `
 ```
 
 产物在 `src\bin\Release\net8.0-windows\win-x64\publish\DeskBox.exe`。
+
+回归检查（使用隔离数据目录，不修改现有收纳内容）：
+
+```powershell
+dotnet run --project .\tests\DeskBox.Tests.csproj -c Release
+```
+
+云母与亚克力需要在 Windows 设置中开启“透明效果”；关闭透明效果或启用高对比度时使用纯色。拼音使用内嵌的 Unicode Unihan 数据，无需联网；多音字采用默认读音并补充常见词组，数据许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 命令行参数
 
@@ -132,7 +143,7 @@ DeskBox/
 │   ├── Infrastructure/         # AppPaths：数据目录、日志、路径降级
 │   ├── Interop/                # Native：Win32 / Shell / DWM P/Invoke 封装
 │   ├── Models/                 # AppConfig、DeskItem、ItemKind
-│   ├── Services/               # 12 个服务，见 docs/ARCHITECTURE.md
+│   ├── Services/               # 服务，见 docs/ARCHITECTURE.md
 │   ├── Theme/                  # ThemeBrushes + styles.xaml 控件样式
 │   ├── ViewModels/             # ItemVm
 │   └── assets/                 # 图标与 Logo
