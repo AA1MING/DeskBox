@@ -1,0 +1,41 @@
+# ---- .NET 构建产物 ----
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.userprefs
+.vs/
+*.binlog
+
+# ---- 发布产物 ----
+publish/
+*.pdb
+*.exe.config
+
+# ---- DeskBox 运行时数据（不入库）----
+# 默认数据目录：%AppData%\DeskBox；便携模式：DESKBOX_HOME 或程序目录
+DeskBoxData/
+Items/
+IconCache/
+config.json
+config.json.tmp
+config.json.broken
+deskbox.log
+DeskBox-startup.log
+autostart.txt
+selftest.txt
+*.selftest.txt
+capture.png
+icons.png
+portable.txt
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+Thumbs.db
+desktop.ini
+*.tmp
+
+# ---- 发布用的二进制（改由 Releases 附件提供）----
+/DeskBox.exe

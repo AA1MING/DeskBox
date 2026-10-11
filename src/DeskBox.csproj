@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>DeskBox</AssemblyName>
+    <RootNamespace>DeskBox</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Version>1.0.1</Version>
+    <Product>DeskBox</Product>
+    <AssemblyTitle>DeskBox 桌面收纳盒</AssemblyTitle>
+    <Company>DeskBox</Company>
+    <Copyright>Copyright © 2025</Copyright>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 嵌入资源：与原始程序集保持一致 -->
+    <EmbeddedResource Include="assets\app.ico" LogicalName="assets/app.ico" />
+    <EmbeddedResource Include="assets\app.preview.png" LogicalName="assets/app.preview.png" />
+  </ItemGroup>
+
+</Project>
+
+

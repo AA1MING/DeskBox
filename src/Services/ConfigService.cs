@@ -1,0 +1,73 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using DeskBox.Infrastructure;
+using DeskBox.Models;
+
+namespace DeskBox.Services;
+
+public static class ConfigService
+{
+	private static readonly JsonSerializerOptions Options = new JsonSerializerOptions
+	{
+		WriteIndented = true,
+		Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+		Converters = { (JsonConverter)new JsonStringEnumConverter() },
+		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+	};
+
+	public static AppConfig Current { get; private set; } = new AppConfig();
+
+	public static void Load()
+	{
+		try
+		{
+			if (File.Exists(AppPaths.ConfigFile))
+			{
+				Current = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(AppPaths.ConfigFile), Options) ?? new AppConfig();
+			}
+		}
+		catch (Exception ex)
+		{
+			AppPaths.Log("配置读取失败，已使用默认配置：" + ex.Message);
+			TryBackupBrokenConfig();
+			Current = new AppConfig();
+		}
+		AppConfig current = Current;
+		if (current.Items == null)
+		{
+			List<DeskItem> list = (current.Items = new List<DeskItem>());
+		}
+	}
+
+	private static void TryBackupBrokenConfig()
+	{
+		try
+		{
+			if (File.Exists(AppPaths.ConfigFile))
+			{
+				File.Copy(AppPaths.ConfigFile, AppPaths.ConfigFile + ".broken", overwrite: true);
+			}
+		}
+		catch
+		{
+		}
+	}
+
+	public static void Save()
+	{
+		try
+		{
+			string text = AppPaths.ConfigFile + ".tmp";
+			File.WriteAllText(text, JsonSerializer.Serialize(Current, Options));
+			File.Move(text, AppPaths.ConfigFile, overwrite: true);
+		}
+		catch (Exception ex)
+		{
+			AppPaths.Log("配置保存失败：" + ex.Message);
+		}
+	}
+}
