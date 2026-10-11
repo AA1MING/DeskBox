@@ -26,7 +26,7 @@ public partial class SettingsWindow : Window, IComponentConnector
 	public SettingsWindow()
 	{
 		InitializeComponent();
-        Motion.AttachWindow(this, SettingsContent);
+        Motion.AttachWindow(this, SettingsSurface);
         SourceInitialized += (_, _) =>
         {
             var point = System.Windows.Forms.Cursor.Position;

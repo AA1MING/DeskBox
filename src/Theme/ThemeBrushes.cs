@@ -100,7 +100,7 @@ public static class ThemeBrushes
 			if (!ThemeService.HighContrast)
 				brush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(previous, color, Motion.Duration)
 				{
-					EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }, FillBehavior = FillBehavior.Stop
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop
 				});
 		}
 		else Application.Current.Resources[key] = new SolidColorBrush(color);

@@ -96,9 +96,9 @@
               <Trigger.EnterActions>
                 <BeginStoryboard>
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.3">
+                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="{x:Static services:Motion.FeedbackDuration}">
                       <DoubleAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseInOut" />
+                        <CubicEase EasingMode="EaseOut" />
                       </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                   </Storyboard>
@@ -107,9 +107,9 @@
               <Trigger.ExitActions>
                 <BeginStoryboard>
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.3">
+                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="{x:Static services:Motion.FeedbackDuration}">
                       <DoubleAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseInOut" />
+                        <CubicEase EasingMode="EaseOut" />
                       </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                   </Storyboard>
@@ -120,9 +120,9 @@
               <Trigger.EnterActions>
                 <BeginStoryboard>
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.3">
+                    <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="{x:Static services:Motion.FeedbackDuration}">
                       <DoubleAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseInOut" />
+                        <CubicEase EasingMode="EaseOut" />
                       </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                   </Storyboard>
@@ -131,9 +131,9 @@
               <Trigger.ExitActions>
                 <BeginStoryboard>
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.3">
+                    <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="{x:Static services:Motion.FeedbackDuration}">
                       <DoubleAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseInOut" />
+                        <CubicEase EasingMode="EaseOut" />
                       </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                   </Storyboard>
@@ -203,9 +203,9 @@
               <Trigger.EnterActions>
                 <BeginStoryboard>
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.3">
+                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="{x:Static services:Motion.FeedbackDuration}">
                       <DoubleAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseInOut" />
+                        <CubicEase EasingMode="EaseOut" />
                       </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                   </Storyboard>
@@ -214,9 +214,9 @@
               <Trigger.ExitActions>
                 <BeginStoryboard>
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.3">
+                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="{x:Static services:Motion.FeedbackDuration}">
                       <DoubleAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseInOut" />
+                        <CubicEase EasingMode="EaseOut" />
                       </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                   </Storyboard>
@@ -290,9 +290,9 @@
               <Trigger.EnterActions>
                 <BeginStoryboard>
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="SelectionLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.3">
+                    <DoubleAnimation Storyboard.TargetName="SelectionLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="{x:Static services:Motion.FeedbackDuration}">
                       <DoubleAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseInOut" />
+                        <CubicEase EasingMode="EaseOut" />
                       </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                   </Storyboard>
@@ -301,9 +301,9 @@
               <Trigger.ExitActions>
                 <BeginStoryboard>
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="SelectionLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.3">
+                    <DoubleAnimation Storyboard.TargetName="SelectionLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="{x:Static services:Motion.FeedbackDuration}">
                       <DoubleAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseInOut" />
+                        <CubicEase EasingMode="EaseOut" />
                       </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                   </Storyboard>
@@ -314,9 +314,9 @@
               <Trigger.EnterActions>
                 <BeginStoryboard>
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.3">
+                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="{x:Static services:Motion.FeedbackDuration}">
                       <DoubleAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseInOut" />
+                        <CubicEase EasingMode="EaseOut" />
                       </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                   </Storyboard>
@@ -325,9 +325,9 @@
               <Trigger.ExitActions>
                 <BeginStoryboard>
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.3">
+                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="{x:Static services:Motion.FeedbackDuration}">
                       <DoubleAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseInOut" />
+                        <CubicEase EasingMode="EaseOut" />
                       </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                   </Storyboard>

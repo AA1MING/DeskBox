@@ -141,6 +141,7 @@ internal static class Program
             Check(ReferenceEquals(firstViewModel, host.Items[0]), "theme switch reuses existing item models");
             if (material is "Mica" or "Acrylic" or "Solid") Diagnostics.CaptureWindow(main, Path.Combine(output, material.ToLowerInvariant() + ".png"));
         }
+        await MotionChecks.Run(main, output, Check);
         main.HidePanel(); await Task.Delay(400);
         var settings = new SettingsWindow(); settings.Show(); await Task.Delay(700);
         ConfigService.Current.Backdrop = "Acrylic"; ThemeBrushes.Apply(); settings.ApplyTheme(); main.ApplyTheme();

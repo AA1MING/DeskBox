@@ -50,26 +50,15 @@ public sealed class MaterialMenu : Menu
         };
         var owner = PlacementTarget == null ? null : Window.GetWindow(PlacementTarget);
         if (owner?.IsVisible == true) _host.Owner = owner;
-        _host.SourceInitialized += (_, _) =>
+        Motion.AttachWindow(_host, this, false);
+        _host.Loaded += (_, _) => Position();
+        _host.ContentRendered += (_, _) =>
         {
-            BackdropService.Apply(_host, ConfigService.Current.Backdrop, ThemeBrushes.IsDarkNow);
-            BackdropService.Cloak(_host, true);
-        };
-        _host.Loaded += (_, _) =>
-        {
-            Position();
-            _host.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
-            {
-                if (_host == null || _closing) return;
-                BackdropService.Cloak(_host, false);
-                Motion.Enter(this, 4);
-                _host.Activate();
-                Items.OfType<MenuItem>().FirstOrDefault(i => i.IsEnabled)?.Focus();
-            }));
+            if (_host == null || _closing) return;
+            Items.OfType<MenuItem>().FirstOrDefault(i => i.IsEnabled)?.Focus();
         };
         _host.Deactivated += (_, _) => { if (!StaysOpen) CloseMenu(); };
         _host.Closed += (_, _) => { _open = false; _host = null; Closed?.Invoke(this, new RoutedEventArgs()); };
-        Opacity = 0;
         _host.Show();
     }
     private void Position()
@@ -97,6 +86,6 @@ public sealed class MaterialMenu : Menu
         _closing = true;
         IsHitTestVisible = false;
         var host = _host;
-        Motion.Fade(this, 0, () => { host.Content = null; host.Close(); IsHitTestVisible = true; });
+        Motion.Exit(this, () => { host.Content = null; host.Close(); IsHitTestVisible = true; });
     }
 }

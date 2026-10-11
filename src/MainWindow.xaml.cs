@@ -81,6 +81,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		_currentGroupId = ConfigService.Current.LastGroupId;
 		_pinned = ConfigService.Current.PinnedOpen;
 		SourceInitialized += OnSourceInitialized;
+        Loaded += (_, _) => { if (_panelOpen) BackdropService.Cloak(this, true); };
 		Deactivated += OnDeactivated;
         _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); ApplySearch(); };
         TextCompositionManager.AddPreviewTextInputStartHandler(SearchBox, (_, _) => { _searchComposing = true; _searchTimer.Stop(); });
@@ -263,7 +264,12 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
             if (hidden)
             {
                 RootBorder.BeginAnimation(UIElement.OpacityProperty, null);
-                RootBorder.Opacity = 0;
+                RootBorder.Opacity = 1;
+                RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                RootSlide.BeginAnimation(TranslateTransform.YProperty, null);
+                RootScale.ScaleX = RootScale.ScaleY = .985;
+                RootSlide.Y = 4;
                 BackdropService.Cloak(this, true);
             }
             Refresh();
@@ -278,10 +284,8 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
             BackdropService.Cloak(this, false);
             Topmost = true;
             Activate();
-            RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            RootScale.ScaleX = RootScale.ScaleY = 1;
-            if (hidden) RootSlide.Y = 8;
+            RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion.Tween(RootScale.ScaleX, 1, milliseconds: 220, spring: true));
+            RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion.Tween(RootScale.ScaleY, 1, milliseconds: 220, spring: true));
             RootBorder.BeginAnimation(UIElement.OpacityProperty, Motion.Tween(RootBorder.Opacity, 1));
             RootSlide.BeginAnimation(TranslateTransform.YProperty, Motion.Tween(RootSlide.Y, 0));
             Focus();
@@ -300,11 +304,13 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
         _panelOpen = false;
         int token = ++_visibilityToken;
         if (!IsVisible) return;
-        RootBorder.BeginAnimation(UIElement.OpacityProperty, Motion.Tween(RootBorder.Opacity, 0, () =>
+        RootBorder.BeginAnimation(UIElement.OpacityProperty, Motion.Tween(RootBorder.Opacity, .88, () =>
         {
             if (token == _visibilityToken && !_panelOpen) Hide();
-        }));
-        RootSlide.BeginAnimation(TranslateTransform.YProperty, Motion.Tween(RootSlide.Y, 8));
+        }, 180));
+        RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion.Tween(RootScale.ScaleX, .985, milliseconds: 180));
+        RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion.Tween(RootScale.ScaleY, .985, milliseconds: 180));
+        RootSlide.BeginAnimation(TranslateTransform.YProperty, Motion.Tween(RootSlide.Y, 3, milliseconds: 180));
     }
 
     private void PositionPanel(bool ensureVisible = true)
@@ -391,10 +397,8 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
     {
         ItemsArea.BeginAnimation(UIElement.OpacityProperty, null);
         ItemsArea.Opacity = 1;
-        AreaSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(forward ? 6 : -6, 0, TimeSpan.FromMilliseconds(160))
-        {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        });
+        double from = AreaSlide.HasAnimatedProperties && Math.Abs(AreaSlide.X) > .01 ? AreaSlide.X : forward ? 4 : -4;
+        AreaSlide.BeginAnimation(TranslateTransform.XProperty, Motion.Tween(from, 0, milliseconds: 180));
     }
 
     private void Header_SizeChanged(object sender, SizeChangedEventArgs e)

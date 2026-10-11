@@ -23,7 +23,7 @@ public partial class InputDialog : Window, IComponentConnector
             e.Cancel = true;
             _closing = true;
             IsHitTestVisible = false;
-            Motion.Fade(DialogContent, 0, Close);
+            Motion.Exit(DialogContent, Close);
         };
         DialogContent.SetResourceReference(Panel.BackgroundProperty, "PanelFill");
         PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) { e.Handled = true; Cancel_Click(this, new RoutedEventArgs()); } };
@@ -69,7 +69,7 @@ public partial class InputDialog : Window, IComponentConnector
 		if (_closing) return;
         _closing = true;
 		IsHitTestVisible = false;
-        Motion.Fade(DialogContent, 0, () => DialogResult = true);
+        Motion.Exit(DialogContent, () => DialogResult = true);
 	}
 
 	private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -77,6 +77,6 @@ public partial class InputDialog : Window, IComponentConnector
 		if (_closing) return;
         _closing = true;
 		IsHitTestVisible = false;
-        Motion.Fade(DialogContent, 0, () => DialogResult = false);
+        Motion.Exit(DialogContent, () => DialogResult = false);
 	}
 }

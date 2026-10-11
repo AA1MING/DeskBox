@@ -108,18 +108,18 @@
                     <Trigger.EnterActions>
                       <BeginStoryboard>
                         <Storyboard>
-                          <DoubleAnimation Storyboard.TargetName="ItemHover" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.3">
+                          <DoubleAnimation Storyboard.TargetName="ItemHover" Storyboard.TargetProperty="Opacity" To="1" Duration="{x:Static services:Motion.FeedbackDuration}">
                             <DoubleAnimation.EasingFunction>
-                              <CubicEase EasingMode="EaseInOut" />
+                              <CubicEase EasingMode="EaseOut" />
                             </DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
-                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleX" To="1.16" Duration="0:0:0.2">
-                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleX" To="1.16" Duration="{x:Static services:Motion.FeedbackDuration}">
+                            <DoubleAnimation.EasingFunction><BackEase Amplitude="0.8" EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
-                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleY" To="1.16" Duration="0:0:0.2">
-                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleY" To="1.16" Duration="{x:Static services:Motion.FeedbackDuration}">
+                            <DoubleAnimation.EasingFunction><BackEase Amplitude="0.8" EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
-                          <DoubleAnimation Storyboard.TargetName="IconLift" Storyboard.TargetProperty="Y" To="-3" Duration="0:0:0.2">
+                          <DoubleAnimation Storyboard.TargetName="IconLift" Storyboard.TargetProperty="Y" To="-3" Duration="{x:Static services:Motion.FeedbackDuration}">
                             <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
                         </Storyboard>
@@ -128,18 +128,18 @@
                     <Trigger.ExitActions>
                       <BeginStoryboard>
                         <Storyboard>
-                          <DoubleAnimation Storyboard.TargetName="ItemHover" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.3">
+                          <DoubleAnimation Storyboard.TargetName="ItemHover" Storyboard.TargetProperty="Opacity" To="0" Duration="{x:Static services:Motion.FeedbackDuration}">
                             <DoubleAnimation.EasingFunction>
-                              <CubicEase EasingMode="EaseInOut" />
+                              <CubicEase EasingMode="EaseOut" />
                             </DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
-                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.28">
-                            <DoubleAnimation.EasingFunction><BackEase Amplitude="0.2" EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="{x:Static services:Motion.SettleDuration}">
+                            <DoubleAnimation.EasingFunction><BackEase Amplitude="0.8" EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
-                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.28">
-                            <DoubleAnimation.EasingFunction><BackEase Amplitude="0.2" EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="{x:Static services:Motion.SettleDuration}">
+                            <DoubleAnimation.EasingFunction><BackEase Amplitude="0.8" EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
-                          <DoubleAnimation Storyboard.TargetName="IconLift" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.28">
+                          <DoubleAnimation Storyboard.TargetName="IconLift" Storyboard.TargetProperty="Y" To="0" Duration="{x:Static services:Motion.SettleDuration}">
                             <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
                         </Storyboard>
@@ -150,9 +150,9 @@
                     <DataTrigger.EnterActions>
                       <BeginStoryboard>
                         <Storyboard>
-                          <DoubleAnimation Storyboard.TargetName="ItemDrop" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.3">
+                          <DoubleAnimation Storyboard.TargetName="ItemDrop" Storyboard.TargetProperty="Opacity" To="1" Duration="{x:Static services:Motion.FeedbackDuration}">
                             <DoubleAnimation.EasingFunction>
-                              <CubicEase EasingMode="EaseInOut" />
+                              <CubicEase EasingMode="EaseOut" />
                             </DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
                         </Storyboard>
@@ -161,9 +161,9 @@
                     <DataTrigger.ExitActions>
                       <BeginStoryboard>
                         <Storyboard>
-                          <DoubleAnimation Storyboard.TargetName="ItemDrop" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.3">
+                          <DoubleAnimation Storyboard.TargetName="ItemDrop" Storyboard.TargetProperty="Opacity" To="0" Duration="{x:Static services:Motion.FeedbackDuration}">
                             <DoubleAnimation.EasingFunction>
-                              <CubicEase EasingMode="EaseInOut" />
+                              <CubicEase EasingMode="EaseOut" />
                             </DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
                         </Storyboard>
