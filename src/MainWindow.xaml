@@ -81,7 +81,7 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Border CornerRadius="8" AllowDrop="True" Width="{Binding CellWidth}" Height="{Binding CellHeight}" Tag="{Binding}" Loaded="Item_Loaded" services:Motion.Interactive="True" MouseLeftButtonDown="Item_MouseDown" MouseLeftButtonUp="Item_MouseUp" MouseMove="Item_MouseMove" MouseRightButtonUp="Item_RightButtonUp" DragOver="Item_DragOver" DragLeave="Item_DragLeave" Drop="Item_Drop" Name="ItemTile">
+                <Border CornerRadius="8" AllowDrop="True" Width="{Binding CellWidth}" Height="{Binding CellHeight}" Tag="{Binding}" MouseEnter="Item_MouseEnter" MouseLeftButtonDown="Item_MouseDown" MouseLeftButtonUp="Item_MouseUp" MouseMove="Item_MouseMove" MouseRightButtonUp="Item_RightButtonUp" DragOver="Item_DragOver" DragLeave="Item_DragLeave" Drop="Item_Drop" Name="ItemTile">
                   <FrameworkElement.Style>
                     <Style TargetType="{x:Type Border}">
                       <Setter Property="Background" Value="#00FFFFFF" />
@@ -91,7 +91,14 @@
                     <Border Name="ItemHover" CornerRadius="8" Background="{DynamicResource HoverFill}" Opacity="0" IsHitTestVisible="False" />
                     <Border Name="ItemDrop" CornerRadius="8" Background="{DynamicResource AccentSoftFill}" Opacity="0" IsHitTestVisible="False" />
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                      <Image RenderOptions.BitmapScalingMode="HighQuality" Source="{Binding Icon}" Width="{Binding IconSize}" Height="{Binding IconSize}" />
+                      <Image Name="ItemIcon" RenderOptions.BitmapScalingMode="HighQuality" Source="{Binding Icon}" Width="{Binding IconSize}" Height="{Binding IconSize}" RenderTransformOrigin="0.5,0.5">
+                        <Image.RenderTransform>
+                          <TransformGroup>
+                            <ScaleTransform x:Name="IconScale" />
+                            <TranslateTransform x:Name="IconLift" />
+                          </TransformGroup>
+                        </Image.RenderTransform>
+                      </Image>
                       <TextBlock TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="34" FontSize="12" Margin="5,7,5,0" Foreground="{DynamicResource TextFill}" Text="{Binding Name}" Visibility="{Binding LabelVisibility}" />
                     </StackPanel>
                   </Grid>
@@ -106,6 +113,15 @@
                               <CubicEase EasingMode="EaseInOut" />
                             </DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
+                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleX" To="1.16" Duration="0:0:0.2">
+                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                          </DoubleAnimation>
+                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleY" To="1.16" Duration="0:0:0.2">
+                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                          </DoubleAnimation>
+                          <DoubleAnimation Storyboard.TargetName="IconLift" Storyboard.TargetProperty="Y" To="-3" Duration="0:0:0.2">
+                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                          </DoubleAnimation>
                         </Storyboard>
                       </BeginStoryboard>
                     </Trigger.EnterActions>
@@ -116,6 +132,15 @@
                             <DoubleAnimation.EasingFunction>
                               <CubicEase EasingMode="EaseInOut" />
                             </DoubleAnimation.EasingFunction>
+                          </DoubleAnimation>
+                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.28">
+                            <DoubleAnimation.EasingFunction><BackEase Amplitude="0.2" EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                          </DoubleAnimation>
+                          <DoubleAnimation Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.28">
+                            <DoubleAnimation.EasingFunction><BackEase Amplitude="0.2" EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                          </DoubleAnimation>
+                          <DoubleAnimation Storyboard.TargetName="IconLift" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.28">
+                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
                           </DoubleAnimation>
                         </Storyboard>
                       </BeginStoryboard>

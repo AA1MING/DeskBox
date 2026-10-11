@@ -119,6 +119,7 @@ internal static class Program
         search.Clear(); await Task.Delay(500);
         Check(host.Items.Count == 1 && ConfigService.Current.LastGroupId == root.Id, "clear search restores original group");
         main.Navigate(null); await Task.Delay(400);
+        await InteractionChecks.Run(main, root, output, Check);
         main.HidePanel(); await Task.Delay(70); main.ShowPanel(); await Task.Delay(500);
         Check(main.IsVisible && rootBorder.Opacity > .99, "rapid hide/show cancels stale hide completion");
         main.HidePanel(); await Task.Delay(500);

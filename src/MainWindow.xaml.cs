@@ -69,6 +69,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
     private bool _internalDropCompleted;
     private bool _acceptingImports = true;
     private int _pendingImports;
+    private int _navigationToken;
     private TaskCompletionSource? _importsFinished;
 
 	public bool CaptureMode { get; set; }
@@ -295,6 +296,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 
     public void HidePanel()
     {
+        ++_navigationToken;
         _panelOpen = false;
         int token = ++_visibilityToken;
         if (!IsVisible) return;
@@ -354,9 +356,26 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		return CurrentGroup()?.Children ?? ConfigService.Current.Items;
 	}
 
-    public void Navigate(string? groupId)
+    public async void Navigate(string? groupId)
     {
+        int token = ++_navigationToken;
+        _searchTimer.Stop();
         bool forward = groupId != null && groupId != _currentGroupId;
+        var destination = groupId == null ? ConfigService.Current.Items : FindItem(ConfigService.Current.Items, groupId)?.Children;
+        if (destination == null) return;
+        var ready = PrepareIconsAsync(destination);
+        if (!ready.IsCompleted)
+        {
+            await Task.WhenAny(ready, Task.Delay(150));
+            if (token != _navigationToken || Dispatcher.HasShutdownStarted) return;
+            if (!ready.IsCompleted)
+            {
+                SetStatus("正在准备文件夹图标…");
+                await Task.WhenAny(ready, Task.Delay(3000));
+            }
+        }
+        if (token != _navigationToken || Dispatcher.HasShutdownStarted) return;
+        if (groupId != null && FindItem(ConfigService.Current.Items, groupId) == null) return;
         _searchTimer.Stop();
         _searchQuery = "";
         SearchBox.Clear();
@@ -371,9 +390,11 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
     private void AnimateContentIn(bool forward)
     {
         ItemsArea.BeginAnimation(UIElement.OpacityProperty, null);
-        ItemsArea.Opacity = 0;
-        ItemsArea.BeginAnimation(UIElement.OpacityProperty, Motion.Tween(0, 1));
-        AreaSlide.BeginAnimation(TranslateTransform.XProperty, Motion.Tween(forward ? 12 : -12, 0));
+        ItemsArea.Opacity = 1;
+        AreaSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(forward ? 6 : -6, 0, TimeSpan.FromMilliseconds(160))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
     }
 
     private void Header_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -389,6 +410,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
     private void Search_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (SearchHint == null) return;
+        ++_navigationToken;
         ClearSearchButton.Visibility = SearchBox.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         _searchTimer.Stop();
         if (!_searchComposing) _searchTimer.Start();
@@ -412,16 +434,40 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
         AnimateContentIn(true);
     }
 
-    private void Item_Loaded(object sender, RoutedEventArgs e)
+    private async void Item_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (sender is FrameworkElement element && IsVisible) Motion.Enter(element, 4);
+        if (sender is not Border { Tag: ItemVm { IsGroup: true } vm } tile) return;
+        await Task.Delay(120);
+        foreach (var child in vm.Model.Children.Take(32).ToArray())
+        {
+            if (!tile.IsMouseOver || !tile.IsLoaded || Dispatcher.HasShutdownStarted) break;
+            await PrepareItem(child).Ready;
+        }
+    }
+
+    private Task PrepareIconsAsync(IEnumerable<DeskItem> items) =>
+        Task.WhenAll(items.Select(model => PrepareItem(model).Ready));
+
+    private (ItemVm Vm, Task Ready) PrepareItem(DeskItem model)
+    {
+        var config = ConfigService.Current;
+        int size = Math.Clamp(config.IconSize, 32, 96);
+        var color = ThemeBrushes.IsDarkNow ? Colors.White : System.Windows.Media.Color.FromRgb(26, 26, 26);
+        double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        if (!_viewModels.TryGetValue(model.Id, out var vm) || !ReferenceEquals(vm.Model, model))
+            _viewModels[model.Id] = vm = new ItemVm(model, IconService.Placeholder, size, size + 46, size + 46, config.ShowLabels);
+        vm.UpdateLayout(size, config.ShowLabels);
+        string iconKey = $"{model.Id}|{model.StoredName}|{model.Target}|{size}|{dpi}|{config.MonochromeIcons}|{(config.MonochromeIcons ? color.ToString() : "color")}";
+        if (!_iconTasks.TryGetValue(iconKey, out var task))
+            _iconTasks[iconKey] = task = LoadIconAsync(model, size, config.MonochromeIcons, color, dpi);
+        _requestedIcons[model.Id] = iconKey;
+        return (vm, UpdateIconAsync(vm, task, iconKey));
     }
 
     public void Refresh()
     {
         if (ItemsHost == null) return;
         AppConfig config = ConfigService.Current;
-        int size = Math.Clamp(config.IconSize, 32, 96);
         bool searching = _searchQuery.Length > 0;
         var desired = searching ? NameService.Sort(NameService.Search(config.Items, _searchQuery), "Name") : NameService.Sort(CurrentList(), config.SortMode);
         var positions = new Dictionary<string, Point>();
@@ -432,25 +478,12 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
         var ids = desired.Select(i => i.Id).ToHashSet();
         for (int i = _items.Count - 1; i >= 0; i--) if (!ids.Contains(_items[i].Model.Id)) _items.RemoveAt(i);
         var loads = new List<Task>();
-        var color = ThemeBrushes.IsDarkNow ? Colors.White : System.Windows.Media.Color.FromRgb(26, 26, 26);
-        double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         for (int index = 0; index < desired.Count; index++)
         {
-            var model = desired[index];
-            if (!_viewModels.TryGetValue(model.Id, out var vm) || !ReferenceEquals(vm.Model, model))
-                _viewModels[model.Id] = vm = new ItemVm(model, IconService.Placeholder, size, size + 46, size + 46, config.ShowLabels);
-            vm.UpdateLayout(size, config.ShowLabels);
+            var (vm, ready) = PrepareItem(desired[index]);
             int previous = _items.IndexOf(vm);
             if (previous < 0) _items.Insert(index, vm); else if (previous != index) _items.Move(previous, index);
-            string iconKey = $"{model.Id}|{model.StoredName}|{model.Target}|{size}|{dpi}|{config.MonochromeIcons}|{(config.MonochromeIcons ? color.ToString() : "color")}";
-            if (!_iconTasks.TryGetValue(iconKey, out var task))
-            {
-                bool mono = config.MonochromeIcons;
-                task = LoadIconAsync(model, size, mono, color, dpi);
-                _iconTasks[iconKey] = task;
-            }
-            _requestedIcons[model.Id] = iconKey;
-            loads.Add(UpdateIconAsync(vm, task, iconKey));
+            loads.Add(ready);
         }
         _iconsReady = Task.WhenAll(loads);
         BackButton.Visibility = !searching && _currentGroupId != null ? Visibility.Visible : Visibility.Collapsed;
