@@ -11,6 +11,7 @@ public sealed class ItemVm : INotifyPropertyChanged
 	private bool _isDropTarget;
 
 	private bool _isRenaming;
+    private string _displayedName;
 
 	public DeskItem Model { get; }
 
@@ -30,21 +31,20 @@ public sealed class ItemVm : INotifyPropertyChanged
 
 	public void SetIcon(ImageSource? icon)
 	{
+        if (ReferenceEquals(Icon, icon)) return;
 		Icon = icon;
 		OnPropertyChanged(nameof(Icon));
 	}
 
 	public void UpdateLayout(int size, bool labels)
 	{
-		IconSize = size;
-		CellWidth = size + 46;
-		CellHeight = size + (labels ? 46 : 22);
-		LabelVisibility = labels ? Visibility.Visible : Visibility.Collapsed;
-		OnPropertyChanged(nameof(IconSize));
-		OnPropertyChanged(nameof(CellWidth));
-		OnPropertyChanged(nameof(CellHeight));
-		OnPropertyChanged(nameof(LabelVisibility));
-		RaiseNameChanged();
+        if (IconSize != size) { IconSize = size; OnPropertyChanged(nameof(IconSize)); }
+        double width = size + 46, height = size + (labels ? 46 : 22);
+        if (CellWidth != width) { CellWidth = width; OnPropertyChanged(nameof(CellWidth)); }
+        if (CellHeight != height) { CellHeight = height; OnPropertyChanged(nameof(CellHeight)); }
+        var visibility = labels ? Visibility.Visible : Visibility.Collapsed;
+        if (LabelVisibility != visibility) { LabelVisibility = visibility; OnPropertyChanged(nameof(LabelVisibility)); }
+        if (_displayedName != Model.Name) RaiseNameChanged();
 	}
 
 	public bool IsDropTarget
@@ -84,6 +84,7 @@ public sealed class ItemVm : INotifyPropertyChanged
 	public ItemVm(DeskItem model, ImageSource? icon, double iconSize, double cellWidth, double cellHeight, bool showLabels)
 	{
 		Model = model;
+        _displayedName = model.Name;
 		Icon = icon;
 		IconSize = iconSize;
 		CellWidth = cellWidth;
@@ -93,6 +94,7 @@ public sealed class ItemVm : INotifyPropertyChanged
 
 	public void RaiseNameChanged()
 	{
+        _displayedName = Model.Name;
 		OnPropertyChanged("Name");
 	}
 

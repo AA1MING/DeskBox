@@ -27,7 +27,7 @@ internal static class Program
     [STAThread]
     public static int Main()
     {
-        var output = Path.GetFullPath(Path.Combine("publish", "verification-1.1.0"));
+        var output = Path.GetFullPath(Path.Combine("publish", "verification-1.1.1"));
         Directory.CreateDirectory(output);
         var data = Path.Combine(output, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(data);
@@ -191,6 +191,7 @@ internal static class Program
             .Invoke(main, new object[] { "取消测试", "名称", "旧名称" });
         Check(cancelled == null, "title-bar close animates and cancels the input dialog");
         Check(panelStayedVisible, "input dialog does not trigger automatic hiding of its panel owner");
+        await DragImportChecks.Run(main, output, Check);
         main.Close();
     }
 

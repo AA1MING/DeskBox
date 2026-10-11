@@ -34,6 +34,7 @@ public partial class App : Application
 	private MainWindow? _panel;
 
 	private bool _captureMode;
+    private bool _exiting;
 
 	protected override void OnStartup(StartupEventArgs e)
 	{
@@ -487,8 +488,11 @@ public partial class App : Application
 		MessageBox.Show("DeskBox 桌面收纳盒\n\n· 把桌面上的快捷方式或文件直接拖进面板，原文件会被移动到收纳目录，桌面立刻变干净。\n· 单击图标打开；按住图标拖动可以调整位置，拖到文件夹上可以归档。\n· 右键图标：打开 / 以管理员身份运行 / 打开所在位置 / 重命名 / 删除 / 导出到桌面 / 属性。\n· 顶部“新建文件夹”可以分类；“一键排序”可以在手动顺序、名称、类型、使用频率之间切换。\n· 按 Esc 或点击面板外部关闭；托盘图标左键可以再次呼出。\n\n数据目录：" + AppPaths.BaseDir, "DeskBox 使用说明", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 	}
 
-	public void ExitApp()
+	public async void ExitApp()
 	{
+        if (_exiting) return;
+        _exiting = true;
+        if (_panel != null) await _panel.FinishFileOperationsAsync();
 		if (!_captureMode)
 		{
 			ConfigService.Save();

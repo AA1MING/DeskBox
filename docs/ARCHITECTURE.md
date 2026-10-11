@@ -116,6 +116,8 @@ DeskItem
 | `BackdropService` | Mica / Acrylic / 纯色 | Win11 走 DWM，低版本走 SetWindowCompositionAttribute |
 | `NameService` | 名称排序与全局搜索 | 内嵌 Unihan 拼音、常见多音词、自然数字比较 |
 | `Motion` | 过渡与滚动 | 300 ms 缓动、窗口准备、淡入淡出、滚动取消 |
+| `ItemDragService` | 内外部拖放数据 | 内部项目编号与 Windows FileDrop 共存，指定默认移动 |
+| `FileWorkQueue` | 文件任务 | 后台 STA 串行执行移动与 Shell 解析，避免阻塞界面 |
 | `RecycleBin` | 删除到回收站 | `SHFileOperation` + `FOF_ALLOWUNDO` |
 
 ### ItemStore：收纳与启动
@@ -184,6 +186,10 @@ BaseDir 写不进去？
 
 内部拖动时，`Item_DragOver` 会拒绝把分组拖进自己的子孙节点（`ContainsItem` 判定），
 防止构造出环。`ClearDropTargets` / `SetDropTarget` 负责高亮反馈。
+
+快捷方式的拖放数据同时携带 `DeskBox.ItemId` 和 `FileDrop`，桌面和资源管理器可直接接收真实快捷方式文件；DeskBox 内部始终优先处理项目编号，避免再次导入文件。允许 Move / Copy，Shell 默认 Move，Ctrl 可改为 Copy。外部移动完成后确认原文件已经离开仓库才移除模型，兼容优化移动返回 None；取消或复制保留原件。
+
+收纳通过 `FileWorkQueue` 的后台 STA 队列串行执行，UI 只负责附加模型、刷新与保存；若原目标分组在等待期间被删除，则放回根分组。`App.ExitApp` 会等待所有收纳任务保存后再退出。
 
 ### 导航与渲染
 

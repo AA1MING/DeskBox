@@ -29,8 +29,6 @@ namespace DeskBox;
 
 public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 {
-	private const string InternalFormat = "DeskBox.ItemId";
-
 	private readonly ObservableCollection<ItemVm> _items = new ObservableCollection<ItemVm>();
 
 	private string? _currentGroupId;
@@ -67,6 +65,11 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
     private readonly SemaphoreSlim _iconLoader = new(1, 1);
     private bool _searchComposing;
     private bool _dropOverlayShowing;
+    private bool _dragging;
+    private bool _internalDropCompleted;
+    private bool _acceptingImports = true;
+    private int _pendingImports;
+    private TaskCompletionSource? _importsFinished;
 
 	public bool CaptureMode { get; set; }
 
@@ -82,6 +85,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
         TextCompositionManager.AddPreviewTextInputStartHandler(SearchBox, (_, _) => { _searchComposing = true; _searchTimer.Stop(); });
         TextCompositionManager.AddPreviewTextInputHandler(SearchBox, (_, _) => { _searchComposing = false; _searchTimer.Start(); });
 		PreviewKeyDown += OnPreviewKeyDown;
+        PreviewMouseDown += OnPreviewMouseDown;
 	}
 
 	private void OnSourceInitialized(object? sender, EventArgs e)
@@ -105,6 +109,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 
 	private void OnDeactivated(object? sender, EventArgs e)
 	{
+        if (_dragging) return;
 		if (!_dialogOpen && !_menuOpen && !_pinned && !CaptureMode)
 		{
 			if (Native.IsLeftButtonDown())
@@ -185,6 +190,13 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		PinButton.Background = (System.Windows.Media.Brush)FindResource(_pinned ? "AccentFill" : "ControlFill");
 		PinButton.Foreground = (System.Windows.Media.Brush)FindResource(_pinned ? "AccentText" : "TextFill");
 	}
+
+    private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!SearchBox.IsKeyboardFocusWithin) return;
+        if (e.OriginalSource is Visual visual && HeaderSearch.IsAncestorOf(visual)) return;
+        RootBorder.Focus();
+    }
 
 	private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
 	{
@@ -364,10 +376,19 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
         AreaSlide.BeginAnimation(TranslateTransform.XProperty, Motion.Tween(forward ? 12 : -12, 0));
     }
 
+    private void Header_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (!e.WidthChanged) return;
+        bool narrow = e.NewSize.Width < 640;
+        Grid.SetRow(HeaderActions, narrow ? 1 : 0);
+        Grid.SetColumn(HeaderActions, narrow ? 0 : 3);
+        Grid.SetColumnSpan(HeaderActions, narrow ? 4 : 1);
+        HeaderActions.Margin = narrow ? new Thickness(0, 10, 0, 0) : new Thickness(0);
+    }
+
     private void Search_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (SearchHint == null) return;
-        SearchHint.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         ClearSearchButton.Visibility = SearchBox.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         _searchTimer.Stop();
         if (!_searchComposing) _searchTimer.Start();
@@ -549,14 +570,14 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 
 	private void Area_DragOver(object sender, System.Windows.DragEventArgs e)
 	{
-		bool flag = IsAcceptable(e.Data) && (_searchQuery.Length == 0 || e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop));
+		bool flag = IsAcceptable(e.Data) && (_searchQuery.Length == 0 || ItemDragService.IsExternalFileDrop(e.Data));
 		e.Effects = (flag ? System.Windows.DragDropEffects.Move : System.Windows.DragDropEffects.None);
 		e.Handled = true;
 		if (flag)
 		{
 			_dragActive = true;
 		}
-		if (!flag || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+		if (!flag || !ItemDragService.IsExternalFileDrop(e.Data))
 		{
 			return;
 		}
@@ -587,13 +608,14 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		ClearDropTargets();
 		StopHideWatch();
 		e.Handled = true;
-        if (_searchQuery.Length > 0 && !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
-		if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        if (_searchQuery.Length > 0 && !ItemDragService.IsExternalFileDrop(e.Data)) return;
+		if (ItemDragService.IsExternalFileDrop(e.Data))
 		{
 			ImportFiles((string[])e.Data.GetData(System.Windows.DataFormats.FileDrop), CurrentList(), CurrentList().Count);
 		}
 		else if (e.Data.GetDataPresent("DeskBox.ItemId"))
 		{
+            _internalDropCompleted = true;
 			string id = (string)e.Data.GetData("DeskBox.ItemId");
 			DeskItem deskItem = FindItem(ConfigService.Current.Items, id);
 			if (deskItem != null)
@@ -640,7 +662,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		if (_searchQuery.Length > 0 && !flag) return;
 		bool after = !flag && position.X > border.ActualWidth / 2.0;
 		List<DeskItem> list = (flag ? tag.Model.Children : CurrentList());
-		if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+		if (ItemDragService.IsExternalFileDrop(e.Data))
 		{
 			string[] files = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop);
 			int index = (flag ? list.Count : IndexFor(list, tag.Model, after));
@@ -652,6 +674,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 			{
 				return;
 			}
+            _internalDropCompleted = true;
 			string id = (string)e.Data.GetData("DeskBox.ItemId");
 			DeskItem deskItem = FindItem(ConfigService.Current.Items, id);
 			if (deskItem != null && deskItem != tag.Model && (!deskItem.IsGroup || !ContainsItem(deskItem, tag.Model.Id)))
@@ -681,23 +704,49 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		return Math.Clamp(after ? (num + 1) : num, 0, list.Count);
 	}
 
-	private void ImportFiles(string[] files, List<DeskItem> destination, int index)
-	{
-		ItemStore.ResetImportStats();
-		List<DeskItem> list = ItemStore.ImportAll(files);
-		if (list.Count == 0)
-		{
-			SetStatus("收纳失败，请检查文件占用或访问权限。");
-			return;
-		}
-		destination.InsertRange(Math.Clamp(index, 0, destination.Count), list);
-		Persist();
-		SetStatus((ItemStore.CopiedInsteadOfMoved > 0) ? $"已收纳 {list.Count} 项；{ItemStore.CopiedInsteadOfMoved} 项仅复制，原文件保留。" : $"已移动收纳 {list.Count} 项。");
-	}
+    private async void ImportFiles(string[] files, List<DeskItem> destination, int index)
+    {
+        if (!_acceptingImports) return;
+        if (++_pendingImports == 1) _importsFinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        SetStatus("正在收纳…");
+        try
+        {
+            var result = await FileWorkQueue.RunAsync(() =>
+            {
+                ItemStore.ResetImportStats();
+                var items = ItemStore.ImportAll(files);
+                return (Items: items, Copied: ItemStore.CopiedInsteadOfMoved);
+            });
+            if (result.Items.Count == 0) { SetStatus("收纳失败，请检查文件占用或访问权限。"); return; }
+            if (!ContainsList(ConfigService.Current.Items, destination)) destination = ConfigService.Current.Items;
+            destination.InsertRange(Math.Clamp(index, 0, destination.Count), result.Items);
+            Persist();
+            SetStatus(result.Copied > 0 ? $"已收纳 {result.Items.Count} 项；{result.Copied} 项仅复制，原文件保留。" : $"已移动收纳 {result.Items.Count} 项。");
+        }
+        catch (Exception ex)
+        {
+            AppPaths.Log("收纳失败：" + ex);
+            SetStatus("收纳失败，请检查文件占用或访问权限。");
+        }
+        finally
+        {
+            if (--_pendingImports == 0) _importsFinished?.TrySetResult();
+            else SetStatus("正在收纳…");
+        }
+    }
+
+    private static bool ContainsList(List<DeskItem> root, List<DeskItem> target) =>
+        ReferenceEquals(root, target) || root.Any(item => ContainsList(item.Children, target));
+
+    public Task FinishFileOperationsAsync()
+    {
+        _acceptingImports = false;
+        return _importsFinished?.Task ?? Task.CompletedTask;
+    }
 
 	private void Persist()
 	{
-		SortTree(ConfigService.Current.Items, ConfigService.Current.SortMode);
+        if (ConfigService.Current.SortMode != "Manual") SortTree(ConfigService.Current.Items, ConfigService.Current.SortMode);
         ConfigService.Save();
 		Refresh();
 	}
@@ -725,24 +774,52 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 			return;
 		}
 		Point position = e.GetPosition(this);
-		if (Math.Abs(position.X - _dragOrigin.X) < 6.0 && Math.Abs(position.Y - _dragOrigin.Y) < 6.0)
+		if (Math.Abs(position.X - _dragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(position.Y - _dragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance)
 		{
 			return;
 		}
 		ItemVm pressed = _pressed;
 		_pressed = null;
 		_dragged = true;
-		System.Windows.DataObject dataObject = new System.Windows.DataObject();
-		dataObject.SetData("DeskBox.ItemId", pressed.Model.Id);
+        _ = DragItemAsync((FrameworkElement)sender, pressed);
+    }
+
+    internal async Task DragItemAsync(FrameworkElement source, ItemVm item)
+    {
+        if (_dragging) return;
+        _dragging = true;
+        _internalDropCompleted = false;
+        StopHideWatch();
+        var data = ItemDragService.CreateData(item.Model);
 		try
 		{
-			DragDrop.DoDragDrop((DependencyObject)sender, dataObject, System.Windows.DragDropEffects.Move);
+            var allowed = ItemDragService.FilePath(data) != null ? System.Windows.DragDropEffects.Move | System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.Move;
+            var result = DragDrop.DoDragDrop(source, data, allowed);
+            if (!_internalDropCompleted) await CompleteExternalDragAsync(item.Model, data, result);
 		}
 		catch (Exception ex)
 		{
 			AppPaths.Log("拖动失败：" + ex.Message);
 		}
+        finally
+        {
+            _dragging = false;
+            ClearDropTargets();
+            StopHideWatch();
+            if (!IsActive && !_pinned && !CaptureMode) HidePanel();
+        }
 	}
+
+    internal async Task CompleteExternalDragAsync(DeskItem item, System.Windows.IDataObject data, System.Windows.DragDropEffects result)
+    {
+        string? path = ItemDragService.FilePath(data);
+        if (path == null || !string.Equals(path, AppPaths.StoredFilePath(item), StringComparison.OrdinalIgnoreCase)) return;
+        if (File.Exists(path) && ItemDragService.ReportsMove(data, result))
+            for (int attempt = 0; attempt < 20 && File.Exists(path); attempt++) await Task.Delay(25);
+        // Optimized Shell moves can report None; only remove the model after the file actually leaves.
+        if (!File.Exists(path)) { RemoveFromTree(item); Persist(); }
+    }
 
 	private void Item_MouseUp(object sender, MouseButtonEventArgs e)
 	{

@@ -81,7 +81,7 @@ public static class ItemStore
 			StoredName = text,
 			Kind = ((!IsShortcut(text)) ? ItemKind.File : ItemKind.Shortcut)
 		};
-		if (deskItem.Kind == ItemKind.Shortcut)
+		if (deskItem.Kind == ItemKind.Shortcut && string.Equals(Path.GetExtension(text), ".lnk", StringComparison.OrdinalIgnoreCase))
 		{
 			ShortcutInfo shortcutInfo = ShortcutService.Resolve(text2);
 			if ((object)shortcutInfo != null)
