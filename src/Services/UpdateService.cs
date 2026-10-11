@@ -38,7 +38,7 @@ public sealed class UpdateService : IDisposable
     {
         _http = http;
         _installedVersion = installedVersion ?? CurrentVersion;
-        _environment = environment ?? (() => new UpdateEnvironment(AppPaths.ExePath, AppPaths.BaseDir, typeof(App).Assembly.Location.Length == 0));
+        _environment = environment ?? (() => new UpdateEnvironment(ExecutablePath.Current(), AppPaths.BaseDir, typeof(App).Assembly.Location.Length == 0));
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("DeskBox/" + CurrentVersion);
         _http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
     }

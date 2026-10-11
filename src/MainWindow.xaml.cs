@@ -1105,16 +1105,6 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		AddMode("Manual", "手动排序");
 		AddMode("Name", "按名称（字母 / 拼音）");
 		AddMode("Frequent", "按使用频率");
-		menu.Items.Add(new Separator());
-		AddMenuItem(menu, "紧凑排列", () =>
-		{
-			List<DeskItem> list = CurrentList();
-			List<DeskItem> collection = list.ToList();
-			list.Clear();
-			list.AddRange(collection);
-			ConfigService.Save();
-			Refresh();
-		});
 		if (target != null)
 		{
 			menu.PlacementTarget = target;

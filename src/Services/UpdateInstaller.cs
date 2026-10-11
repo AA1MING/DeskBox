@@ -34,10 +34,15 @@ public static class UpdateInstaller
     }
     public static void Start(PreparedUpdate update)
     {
+        string executable = ExecutablePath.Current();
+        var info = FileVersionInfo.GetVersionInfo(executable);
+        if (info.ProductName != "DeskBox" || info.ProductVersion == null || UpdateService.ParseVersion(info.ProductVersion) != UpdateService.CurrentVersion)
+            throw new IOException("程序文件已改变，请退出 DeskBox 并重新打开后再更新。");
+        ProbeDirectory(Path.GetDirectoryName(executable)!);
         string helper = Path.Combine(update.Directory, "helper.exe");
-        File.Copy(AppPaths.ExePath, helper, false);
+        File.Copy(executable, helper, false);
         using var parent = Process.GetCurrentProcess();
-        var plan = new UpdatePlan(parent.Id, parent.StartTime.ToUniversalTime().Ticks, AppPaths.ExePath, update.Download, update.Sha256, update.Version.ToString(), AppPaths.BaseDir);
+        var plan = new UpdatePlan(parent.Id, parent.StartTime.ToUniversalTime().Ticks, executable, update.Download, update.Sha256, update.Version.ToString(), AppPaths.BaseDir);
         string manifest = Path.Combine(update.Directory, "plan.json");
         File.WriteAllText(manifest, JsonSerializer.Serialize(plan));
         var start = new ProcessStartInfo(helper) { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = update.Directory };

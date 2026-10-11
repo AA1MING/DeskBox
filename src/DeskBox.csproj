@@ -13,7 +13,7 @@
     <ApplicationIcon>assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <Version>1.2.1</Version>
+    <Version>1.2.2</Version>
     <Product>DeskBox</Product>
     <AssemblyTitle>DeskBox 桌面收纳盒</AssemblyTitle>
     <Company>DeskBox</Company>

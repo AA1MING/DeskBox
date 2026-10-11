@@ -25,8 +25,9 @@ internal static class Program
         _passed++;
     }
     [STAThread]
-    public static int Main()
+    public static int Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--path-probe") return ExecutablePathChecks.Probe(args[1]);
         var output = Path.GetFullPath(Path.Combine("publish", "verification-" + UpdateService.CurrentVersion.ToString(3)));
         Directory.CreateDirectory(output);
         var data = Path.Combine(output, Guid.NewGuid().ToString("N"));
@@ -61,6 +62,7 @@ internal static class Program
     private static async Task Run(string output)
     {
         await UpdateChecks.Run(Check);
+        await ExecutablePathChecks.Run(Check);
         var original = new[] { Item("微信"), Item("百度"), Item("Chrome"), Item("app10"), Item("App2"), Item("资料", true), Item("Tools", true) };
         foreach (var culture in new[] { "en-US", "zh-CN" })
         {
