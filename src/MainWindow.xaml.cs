@@ -744,6 +744,8 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
         return _importsFinished?.Task ?? Task.CompletedTask;
     }
 
+    internal void ResumeFileOperations() => _acceptingImports = true;
+
 	private void Persist()
 	{
         if (ConfigService.Current.SortMode != "Manual") SortTree(ConfigService.Current.Items, ConfigService.Current.SortMode);
@@ -1102,7 +1104,6 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		ContextMenu menu = CreateMenu();
 		AddMode("Manual", "手动排序");
 		AddMode("Name", "按名称（字母 / 拼音）");
-		AddMode("Type", "按类型分组");
 		AddMode("Frequent", "按使用频率");
 		menu.Items.Add(new Separator());
 		AddMenuItem(menu, "紧凑排列", () =>

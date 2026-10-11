@@ -107,7 +107,6 @@ public static class NameService
     public static List<DeskItem> Sort(IEnumerable<DeskItem> items, string mode) => mode switch
     {
         "Name" => items.OrderBy(i => i.IsGroup ? 0 : 1).ThenBy(i => i.Name, Comparer).ToList(),
-        "Type" => items.OrderBy(i => (int)i.Kind).ThenBy(i => i.Name, Comparer).ToList(),
         "Frequent" => items.OrderByDescending(i => i.ClickCount).ThenBy(i => i.Name, Comparer).ToList(),
         _ => items.ToList()
     };

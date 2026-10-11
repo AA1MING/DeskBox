@@ -42,6 +42,7 @@ public static class ConfigService
 			Current = new AppConfig();
 		}
 		AppConfig current = Current;
+        if (string.Equals(current.SortMode, "Type", StringComparison.OrdinalIgnoreCase)) current.SortMode = "Manual";
 		if (current.Items == null)
 		{
 			List<DeskItem> list = (current.Items = new List<DeskItem>());

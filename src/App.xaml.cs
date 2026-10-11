@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Security.Principal;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -35,10 +36,17 @@ public partial class App : Application
 
 	private bool _captureMode;
     private bool _exiting;
+    public UpdateService Updates { get; } = new();
 
 	protected override void OnStartup(StartupEventArgs e)
 	{
 		base.OnStartup(e);
+        if (e.Args.Length == 2 && e.Args[0] == "--apply-update")
+        {
+            _captureMode = true;
+            RunUpdateHelper(e.Args[1]);
+            return;
+        }
 		DispatcherUnhandledException += (_, args) =>
 		{
 			AppPaths.Log("界面线程未处理异常：" + args.Exception);
@@ -225,6 +233,7 @@ public partial class App : Application
 			_panel?.TogglePanel();
 		};
 		_tray.SettingsRequested += OpenSettings;
+        _tray.UpdateRequested += OpenUpdateSettings;
 		_tray.OpenDataFolderRequested += OpenDataFolder;
 		_tray.HelpRequested += ShowHelp;
 		_tray.ExitRequested += ExitApp;
@@ -239,7 +248,76 @@ public partial class App : Application
         if (!flag2 && firstUse) _panel.ShowPanel();
         ConfigService.Current.HasStarted = true;
         ConfigService.Save();
+        Updates.Changed += OnUpdateChanged;
+        _tray.BalloonClicked += () => { if (Updates.Available != null) OpenSettings(); };
+        int readyIndex = Array.IndexOf(array, "--update-ready");
+        if (readyIndex >= 0 && readyIndex + 1 < array.Length)
+        {
+            try { UpdateInstaller.ReportReady(array[readyIndex + 1]); }
+            catch (Exception ex) { AppPaths.Log("更新启动确认失败：" + ex.Message); }
+        }
+        int errorIndex = Array.IndexOf(array, "--update-error");
+        if (errorIndex >= 0 && errorIndex + 1 < array.Length)
+        {
+            try { _tray.ShowBalloon("DeskBox 更新", File.ReadAllText(array[errorIndex + 1])); }
+            catch { }
+        }
+        if (ConfigService.Current.CheckUpdatesOnStartup && readyIndex < 0 && errorIndex < 0) _ = CheckStartupUpdateAsync();
 	}
+
+    private async void RunUpdateHelper(string manifest)
+    {
+        try { await UpdateInstaller.ApplyAsync(manifest); }
+        catch { }
+        Shutdown();
+    }
+
+    private async Task CheckStartupUpdateAsync()
+    {
+        await Task.Delay(3000);
+        if (!_exiting && ConfigService.Current.CheckUpdatesOnStartup) await Updates.CheckAsync();
+    }
+
+    private string? _notifiedUpdate;
+    private void OnUpdateChanged()
+    {
+        var release = Updates.Available;
+        _tray?.SetUpdateAvailable(release?.Tag);
+        if (release != null && release.Tag != _notifiedUpdate)
+        {
+            _notifiedUpdate = release.Tag;
+            _tray?.ShowBalloon("发现新版 " + release.Tag, "打开设置，点击“更新并重启”。");
+        }
+    }
+
+    public async Task InstallUpdateAsync(PreparedUpdate update)
+    {
+        if (_exiting) throw new InvalidOperationException("程序正在退出");
+        Updates.BeginInstall();
+        _exiting = true;
+        try
+        {
+            if (_panel != null) await _panel.FinishFileOperationsAsync();
+            ConfigService.Save();
+            UpdateInstaller.Start(update);
+        }
+        catch
+        {
+            _exiting = false;
+            _panel?.ResumeFileOperations();
+            Updates.InstallFailed();
+            throw;
+        }
+        _tray?.Dispose();
+        _hotkeys?.Dispose();
+        Shutdown();
+    }
+
+    private async void OpenUpdateSettings()
+    {
+        OpenSettings();
+        if (Updates.Available == null && !Updates.IsBusy) await Updates.CheckAsync();
+    }
 
 	private void StartShowSignalThread()
 	{
@@ -485,7 +563,7 @@ public partial class App : Application
 
 	private void ShowHelp()
 	{
-		MessageBox.Show("DeskBox 桌面收纳盒\n\n· 把桌面上的快捷方式或文件直接拖进面板，原文件会被移动到收纳目录，桌面立刻变干净。\n· 单击图标打开；按住图标拖动可以调整位置，拖到文件夹上可以归档。\n· 右键图标：打开 / 以管理员身份运行 / 打开所在位置 / 重命名 / 删除 / 导出到桌面 / 属性。\n· 顶部“新建文件夹”可以分类；“一键排序”可以在手动顺序、名称、类型、使用频率之间切换。\n· 按 Esc 或点击面板外部关闭；托盘图标左键可以再次呼出。\n\n数据目录：" + AppPaths.BaseDir, "DeskBox 使用说明", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+		MessageBox.Show("DeskBox 桌面收纳盒\n\n· 把桌面上的快捷方式或文件直接拖进面板，原文件会被移动到收纳目录，桌面立刻变干净。\n· 单击图标打开；按住图标拖动可以调整位置，拖到文件夹上可以归档。\n· 右键图标：打开 / 以管理员身份运行 / 打开所在位置 / 重命名 / 删除 / 导出到桌面 / 属性。\n· 顶部“新建文件夹”可以分类；“一键排序”可以在手动顺序、名称、使用频率之间切换。\n· 按 Esc 或点击面板外部关闭；托盘图标左键可以再次呼出。\n\n数据目录：" + AppPaths.BaseDir, "DeskBox 使用说明", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 	}
 
 	public async void ExitApp()
@@ -504,6 +582,7 @@ public partial class App : Application
 
 	protected override void OnExit(ExitEventArgs e)
 	{
+        Updates.Dispose();
 		if (!_captureMode)
 		{
 			ConfigService.Save();

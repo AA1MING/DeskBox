@@ -118,6 +118,8 @@ DeskItem
 | `Motion` | 过渡与滚动 | 300 ms 缓动、窗口准备、淡入淡出、滚动取消 |
 | `ItemDragService` | 内外部拖放数据 | 内部项目编号与 Windows FileDrop 共存，指定默认移动 |
 | `FileWorkQueue` | 文件任务 | 后台 STA 串行执行移动与 Shell 解析，避免阻塞界面 |
+| `UpdateService` | GitHub 更新 | 检查正式版、下载程序、校验大小、SHA-256 与版本，报告状态和进度 |
+| `UpdateInstaller` | 替换程序 | 独立进程等待原程序退出，同卷替换与备份，确认新版启动，否则回滚 |
 | `RecycleBin` | 删除到回收站 | `SHFileOperation` + `FOF_ALLOWUNDO` |
 
 ### ItemStore：收纳与启动
@@ -190,6 +192,10 @@ BaseDir 写不进去？
 快捷方式的拖放数据同时携带 `DeskBox.ItemId` 和 `FileDrop`，桌面和资源管理器可直接接收真实快捷方式文件；DeskBox 内部始终优先处理项目编号，避免再次导入文件。允许 Move / Copy，Shell 默认 Move，Ctrl 可改为 Copy。外部移动完成后确认原文件已经离开仓库才移除模型，兼容优化移动返回 None；取消或复制保留原件。
 
 收纳通过 `FileWorkQueue` 的后台 STA 队列串行执行，UI 只负责附加模型、刷新与保存；若原目标分组在等待期间被删除，则放回根分组。`App.ExitApp` 会等待所有收纳任务保存后再退出。
+
+更新只读取 `AA1MING/DeskBox` 的 GitHub 最新正式版，无需令牌。配置 `CheckUpdatesOnStartup` 默认开启，只检查和提示；点击“更新并重启”才下载。下载保存在数据目录的 `Updates/<随机编号>/new.exe`，验证附件大小、GitHub digest / SHA256SUMS 与程序版本后，等待收纳任务并保存配置。
+
+主程序将当前单文件 EXE 复制为更新助手，通过 `--apply-update plan.json` 启动；助手不申请单实例锁、不读写应用配置。它等待原 PID 与启动时间对应的进程退出，将新版暂存到程序目录后用 `File.Replace` 原子替换并保留备份。新版沿用原程序路径、工作目录与 `DESKBOX_HOME`，以托盘模式启动并写入确认信号；启动失败时恢复备份并显示失败提示。程序目录不可写时在下载前提示，无需提权。结果保存在更新任务目录的 `result.txt`。
 
 ### 导航与渲染
 

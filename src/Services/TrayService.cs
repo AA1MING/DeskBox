@@ -36,6 +36,11 @@ public sealed class TrayService : IDisposable
 
 	public event Action? OpenDataFolderRequested;
 
+    public event Action? UpdateRequested;
+    public event Action? BalloonClicked;
+    private string? _updateTag;
+    public void SetUpdateAvailable(string? tag) => _updateTag = tag;
+
 	public TrayService()
 	{
 		_notifyIcon = new NotifyIcon
@@ -45,6 +50,7 @@ public sealed class TrayService : IDisposable
 			Visible = true
 		};
 		_notifyIcon.MouseClick += OnMouseClick;
+        _notifyIcon.BalloonTipClicked += (_, _) => BalloonClicked?.Invoke();
 	}
 
 	private static Icon LoadIcon()
@@ -133,6 +139,7 @@ public sealed class TrayService : IDisposable
 			SettingsRequested?.Invoke();
 		}));
 		contextMenu.Items.Add(new Separator());
+		contextMenu.Items.Add(NewItem(_updateTag == null ? "检查更新…" : "更新到 " + _updateTag + "…", () => UpdateRequested?.Invoke()));
 		contextMenu.Items.Add(autoStart);
 		contextMenu.Items.Add(NewItem("打开数据文件夹", () =>
 		{

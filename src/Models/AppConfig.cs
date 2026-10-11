@@ -24,6 +24,8 @@ public sealed class AppConfig
 
 	public bool AutoStart { get; set; }
 
+    public bool CheckUpdatesOnStartup { get; set; } = true;
+
 	public bool RestrictedNoticeShown { get; set; }
 
 	public bool PinnedOpen { get; set; }

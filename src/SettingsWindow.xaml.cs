@@ -19,6 +19,7 @@ namespace DeskBox;
 public partial class SettingsWindow : Window, IComponentConnector
 {
 	private bool _loading = true;
+    private readonly UpdateService? _updates;
 
 	public static SettingsWindow? Current { get; private set; }
 
@@ -30,12 +31,17 @@ public partial class SettingsWindow : Window, IComponentConnector
         {
             var point = System.Windows.Forms.Cursor.Position;
             var screen = System.Windows.Forms.Screen.FromPoint(point);
-            double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleY;
-            SettingsContent.MaxHeight = Math.Max(300, screen.WorkingArea.Height / dpi - 80);
+            uint nativeDpi = Native.GetDpiForWindow(new WindowInteropHelper(this).Handle);
+            double dpi = nativeDpi > 0 ? nativeDpi / 96d : VisualTreeHelper.GetDpi(this).DpiScaleY;
+            SettingsContent.MaxHeight = Math.Max(200, Math.Min(780, screen.WorkingArea.Height / dpi - 80));
+            MaxHeight = screen.WorkingArea.Height / dpi - 24;
         };
 		Current = this;
 		LoadFromConfig();
 		_loading = false;
+        _updates = (Application.Current as App)?.Updates;
+        if (_updates != null) _updates.Changed += RefreshUpdate;
+        RefreshUpdate();
 		SourceInitialized += delegate
 		{
 			ApplyTheme();
@@ -50,6 +56,7 @@ public partial class SettingsWindow : Window, IComponentConnector
 		};
 		Closed += delegate
 		{
+            if (_updates != null) _updates.Changed -= RefreshUpdate;
 			Current = null;
 			(Application.Current as App)?.ResumeHotkey();
 		};
@@ -69,6 +76,7 @@ public partial class SettingsWindow : Window, IComponentConnector
 		IconStyleMono.IsChecked = current.MonochromeIcons;
 		IconStyleColor.IsChecked = !current.MonochromeIcons;
 		AutoStartCheck.IsChecked = AutoStartService.IsEnabled();
+        UpdateCheck.IsChecked = current.CheckUpdatesOnStartup;
 		UpdateAutoStartStatus();
 		IconSizeSlider.Value = Math.Clamp(current.IconSize, 32, 96);
 		IconSizeText.Text = $"{current.IconSize} 像素";
@@ -305,6 +313,7 @@ public partial class SettingsWindow : Window, IComponentConnector
 			ConfigService.Current.WidthRatio = appConfig.WidthRatio;
 			ConfigService.Current.HeightRatio = appConfig.HeightRatio;
 			ConfigService.Current.SortMode = "Manual";
+            ConfigService.Current.CheckUpdatesOnStartup = appConfig.CheckUpdatesOnStartup;
 			_loading = true;
 			LoadFromConfig();
 			_loading = false;
@@ -316,4 +325,38 @@ public partial class SettingsWindow : Window, IComponentConnector
 	{
 		Close();
 	}
+
+    private void UpdateCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        ConfigService.Current.CheckUpdatesOnStartup = UpdateCheck.IsChecked == true;
+        ConfigService.Save();
+    }
+
+    private void RefreshUpdate()
+    {
+        CheckUpdateButton.IsEnabled = _updates != null && !_updates.IsBusy;
+        InstallUpdateButton.Visibility = _updates?.Available != null ? Visibility.Visible : Visibility.Collapsed;
+        InstallUpdateButton.IsEnabled = _updates != null && !_updates.IsBusy;
+        UpdateStatus.Text = _updates?.Status ?? "";
+        UpdateProgress.Visibility = _updates?.IsDownloading == true ? Visibility.Visible : Visibility.Collapsed;
+        UpdateProgress.Value = _updates?.Progress ?? 0;
+    }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updates != null) await _updates.CheckAsync();
+    }
+
+    private async void InstallUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updates == null || Application.Current is not App app) return;
+        try { await app.InstallUpdateAsync(await _updates.DownloadAsync()); }
+        catch (Exception ex)
+        {
+            AppPaths.Log("安装更新失败：" + ex.Message);
+            RefreshUpdate();
+            UpdateStatus.Text = "更新失败：" + ex.Message;
+        }
+    }
 }

@@ -27,7 +27,7 @@ internal static class Program
     [STAThread]
     public static int Main()
     {
-        var output = Path.GetFullPath(Path.Combine("publish", "verification-1.1.1"));
+        var output = Path.GetFullPath(Path.Combine("publish", "verification-1.2.0"));
         Directory.CreateDirectory(output);
         var data = Path.Combine(output, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(data);
@@ -60,6 +60,7 @@ internal static class Program
     };
     private static async Task Run(string output)
     {
+        await UpdateChecks.Run(Check);
         var original = new[] { Item("微信"), Item("百度"), Item("Chrome"), Item("app10"), Item("App2"), Item("资料", true), Item("Tools", true) };
         foreach (var culture in new[] { "en-US", "zh-CN" })
         {
