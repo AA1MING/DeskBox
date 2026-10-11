@@ -66,6 +66,24 @@ internal static class MotionChecks
             for (int i = 0; i < 8; i++) Wheel(viewer, -120);
             await Task.Delay(300);
             check(viewer.VerticalOffset >= 0 && viewer.VerticalOffset <= viewer.ScrollableHeight, "repeated wheel input remains within content bounds");
+            var scrollBar = (System.Windows.Controls.Primitives.ScrollBar)viewer.Template.FindName("PART_VerticalScrollBar", viewer);
+            var viewportWidth = viewer.ViewportWidth;
+            var barSize = scrollBar.RenderSize;
+            await Task.Delay(950);
+            check(scrollBar.Opacity < .01, "scrollbar hides after a short idle interval");
+            Wheel(viewer, 120); await Task.Delay(300);
+            check(scrollBar.Opacity > .99, "scrolling reveals the scrollbar again");
+            scrollBar.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = Mouse.MouseEnterEvent });
+            await Task.Delay(950);
+            check(scrollBar.Opacity > .99, "hover keeps the scrollbar available for dragging");
+            Mouse.Capture(scrollBar, CaptureMode.SubTree);
+            scrollBar.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = Mouse.MouseLeaveEvent });
+            await Task.Delay(950);
+            check(scrollBar.IsMouseCaptureWithin && scrollBar.Opacity > .99, "mouse capture keeps scrollbar visible outside its bounds");
+            Mouse.Capture(null);
+            await Task.Delay(950);
+            check(scrollBar.Opacity < .01 && viewer.ViewportWidth == viewportWidth && scrollBar.RenderSize == barSize,
+                "scrollbar hides after release without shifting the content layout");
             settings.Close(); await Task.Delay(65);
             check(settings.IsVisible && surface.Opacity > .85 && viewer.Opacity == 1, "closing keeps readable content until native dismissal");
             await Task.Delay(250);
