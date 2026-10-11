@@ -61,11 +61,22 @@
         <UIElement.RenderTransform>
           <TranslateTransform x:Name="AreaSlide" X="0" Y="0" />
         </UIElement.RenderTransform>
-        <ScrollViewer Name="Scroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="18,4,18,12" Background="#00FFFFFF" Focusable="False" services:Motion.SmoothScroll="True">
+        <ScrollViewer Name="Scroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Background="#00FFFFFF" Focusable="False" services:Motion.SmoothScroll="True">
+          <ScrollViewer.Style>
+            <Style TargetType="{x:Type ScrollViewer}">
+              <Setter Property="Padding" Value="18,4,18,12" />
+              <Style.Triggers>
+                <Trigger Property="ComputedVerticalScrollBarVisibility" Value="Visible">
+                  <!-- Balance the 14-DIP scrollbar gutter on the opposite side. -->
+                  <Setter Property="Padding" Value="32,4,18,12" />
+                </Trigger>
+              </Style.Triggers>
+            </Style>
+          </ScrollViewer.Style>
           <ItemsControl Name="ItemsHost" Background="#00FFFFFF">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
-                <WrapPanel Orientation="Horizontal" />
+                <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center" />
               </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>

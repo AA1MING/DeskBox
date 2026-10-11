@@ -35,7 +35,9 @@ internal static class DragImportChecks
             check(await FileWorkQueue.RunAsync(() => ShortcutService.Create(Path.Combine(AppPaths.ItemsDir, stored), notepad, "--deskbox-test")), "create drag fixture on background STA: " + label);
             var item = new DeskItem { Name = label, Kind = ItemKind.Shortcut, StoredName = stored, Target = notepad, Arguments = "--deskbox-test" };
             ConfigService.Current.Items.Add(item); main.Refresh(); main.UpdateLayout();
-            await Task.Delay(80);
+            // Adding an item can recenter the whole grid. Wait for the layout animation
+            // before sampling screen coordinates for the native drag operation.
+            await Task.Delay(400);
             return item;
         }
         Border Tile(DeskItem item) => Descendants(host).OfType<Border>().First(b => b.Tag is ItemVm vm && ReferenceEquals(vm.Model, item));
