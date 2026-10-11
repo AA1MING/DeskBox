@@ -27,7 +27,7 @@ internal static class Program
     [STAThread]
     public static int Main()
     {
-        var output = Path.GetFullPath(Path.Combine("publish", "verification-1.2.0"));
+        var output = Path.GetFullPath(Path.Combine("publish", "verification-" + UpdateService.CurrentVersion.ToString(3)));
         Directory.CreateDirectory(output);
         var data = Path.Combine(output, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(data);
@@ -100,6 +100,9 @@ internal static class Program
         Check(main.IsVisible, "first panel show completes");
         var rootBorder = (Border)main.FindName("RootBorder");
         Check(rootBorder.Opacity > .99, "panel fades in completely");
+        var settingsButton = (Button)main.FindName("SettingsButton");
+        Check(settingsButton.Focus() && settingsButton.IsKeyboardFocused, "toolbar buttons retain keyboard focus");
+        Check(settingsButton.FocusVisualStyle == null, "toolbar focus does not create a dotted adorner");
         var host = (ItemsControl)main.FindName("ItemsHost");
         Check(host.Items.Count == 8 && host.Items.Cast<DeskBox.ViewModels.ItemVm>().All(i => i.Icon != null), "icons loaded before initial display");
         Check(host.Items.Cast<DeskBox.ViewModels.ItemVm>().All(i => !ReferenceEquals(i.Icon, IconService.Placeholder)), "initial local icons are fully prepared");
@@ -143,6 +146,31 @@ internal static class Program
         Check(((HwndSource)PresentationSource.FromVisual(settings)).CompositionTarget.BackgroundColor.A == expectedAlpha, "settings exposes the material or opaque fallback");
         var settingsContent = (ScrollViewer)settings.FindName("SettingsContent");
         Check(settingsContent.Opacity > .99 && settingsContent.ActualHeight > 100, "settings content is visible after entry animation");
+        Check(settings.Icon != null && main.Icon != null, "window icons resolve from packaged WPF resources");
+        var scrollBar = (ScrollBar)settingsContent.Template.FindName("PART_VerticalScrollBar", settingsContent);
+        var track = (Track)scrollBar.Template.FindName("PART_Track", scrollBar);
+        var thumb = track.Thumb ?? throw new Exception("settings scrollbar has no thumb");
+        Check(scrollBar.Background is SolidColorBrush { Color.A: 0 }, "settings scrollbar uses a draggable thumb and transparent track");
+        double oldOffset = settingsContent.VerticalOffset;
+        typeof(ButtonBase).GetMethod("OnClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(track.IncreaseRepeatButton, null);
+        await Task.Delay(400);
+        Check(settingsContent.VerticalOffset > oldOffset, "scrollbar page click advances settings content");
+        settingsContent.ScrollToTop(); await Task.Delay(100);
+        thumb.RaiseEvent(new DragStartedEventArgs(0, 0));
+        thumb.RaiseEvent(new DragDeltaEventArgs(0, 50));
+        thumb.RaiseEvent(new DragCompletedEventArgs(0, 50, false));
+        await Task.Delay(400);
+        Check(settingsContent.VerticalOffset > 0, "scrollbar thumb drag advances settings content");
+        settingsContent.ScrollToTop(); await Task.Delay(100);
+        var thumbFill = (Border)thumb.Template.FindName("ThumbFill", thumb);
+        Color darkThumb = ((SolidColorBrush)thumbFill.Background).Color;
+        ConfigService.Current.ThemeMode = "Light"; ThemeBrushes.Apply(); settings.ApplyTheme();
+        await Task.Delay(400);
+        Check(((SolidColorBrush)thumbFill.Background).Color != darkThumb, "scrollbar follows live theme changes");
+        Diagnostics.CaptureWindow(settings, Path.Combine(output, "settings-light.png"));
+        ConfigService.Current.ThemeMode = "Dark"; ThemeBrushes.Apply(); settings.ApplyTheme();
+        await Task.Delay(400);
         Native.DwmGetWindowAttribute(new WindowInteropHelper(settings).Handle, 14, out int cloaked, 4);
         Check(cloaked == 0, "settings window is uncloaked");
         Diagnostics.CaptureWindow(settings, Path.Combine(output, "settings.png"));

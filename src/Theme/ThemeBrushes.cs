@@ -77,6 +77,9 @@ public static class ThemeBrushes
 			Set("AccentText", Color.FromRgb(byte.MaxValue, byte.MaxValue, byte.MaxValue));
 			Set("DividerFill", isDarkNow ? Color.FromArgb(28, byte.MaxValue, byte.MaxValue, byte.MaxValue) : Color.FromArgb(22, 0, 0, 0));
 			Set("WindowFill", isDarkNow ? Color.FromRgb(32, 32, 32) : Color.FromRgb(243, 243, 243));
+			Set("ScrollThumbFill", isDarkNow ? Color.FromArgb(72, 255, 255, 255) : Color.FromArgb(66, 0, 0, 0));
+			Set("ScrollThumbHoverFill", isDarkNow ? Color.FromArgb(120, 255, 255, 255) : Color.FromArgb(110, 0, 0, 0));
+			Set("ScrollThumbPressedFill", isDarkNow ? Color.FromArgb(158, 255, 255, 255) : Color.FromArgb(145, 0, 0, 0));
 		}
 	}
 
@@ -86,6 +89,7 @@ public static class ThemeBrushes
 		{
 			if (key is "PanelFill" or "MenuFill" or "WindowFill") color = SystemColors.WindowColor;
 			else if (key is "TextFill" or "TextSecondary") color = SystemColors.WindowTextColor;
+			else if (key is "ScrollThumbFill" or "ScrollThumbHoverFill" or "ScrollThumbPressedFill") color = SystemColors.WindowTextColor;
 		}
 		if (Application.Current.Resources[key] is SolidColorBrush brush && !brush.IsFrozen)
 		{
