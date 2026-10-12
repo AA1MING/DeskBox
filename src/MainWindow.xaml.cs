@@ -268,8 +268,8 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
                 RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
                 RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
                 RootSlide.BeginAnimation(TranslateTransform.YProperty, null);
-                RootScale.ScaleX = RootScale.ScaleY = .985;
-                RootSlide.Y = 4;
+                RootScale.ScaleX = RootScale.ScaleY = Motion.EnterScale;
+                RootSlide.Y = Motion.EnterOffset;
                 BackdropService.Cloak(this, true);
             }
             Refresh();
@@ -284,10 +284,11 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
             BackdropService.Cloak(this, false);
             Topmost = true;
             Activate();
-            RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion.Tween(RootScale.ScaleX, 1, milliseconds: 220, spring: true));
-            RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion.Tween(RootScale.ScaleY, 1, milliseconds: 220, spring: true));
-            RootBorder.BeginAnimation(UIElement.OpacityProperty, Motion.Tween(RootBorder.Opacity, 1));
-            RootSlide.BeginAnimation(TranslateTransform.YProperty, Motion.Tween(RootSlide.Y, 0));
+            int enterMs = (int)Motion.EnterDuration.TotalMilliseconds;
+            RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion.Tween(RootScale.ScaleX, 1, milliseconds: enterMs));
+            RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion.Tween(RootScale.ScaleY, 1, milliseconds: enterMs));
+            RootBorder.BeginAnimation(UIElement.OpacityProperty, Motion.Tween(RootBorder.Opacity, 1, milliseconds: enterMs));
+            RootSlide.BeginAnimation(TranslateTransform.YProperty, Motion.Tween(RootSlide.Y, 0, milliseconds: enterMs));
             Focus();
         }
         catch (Exception ex)
@@ -304,13 +305,21 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
         _panelOpen = false;
         int token = ++_visibilityToken;
         if (!IsVisible) return;
-        RootBorder.BeginAnimation(UIElement.OpacityProperty, Motion.Tween(RootBorder.Opacity, .88, () =>
+        int exitMs = (int)Motion.ExitDuration.TotalMilliseconds;
+        RootBorder.BeginAnimation(UIElement.OpacityProperty, Motion.TweenOut(RootBorder.Opacity, Motion.ExitOpacity, () =>
         {
-            if (token == _visibilityToken && !_panelOpen) Hide();
-        }, 180));
-        RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion.Tween(RootScale.ScaleX, .985, milliseconds: 180));
-        RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion.Tween(RootScale.ScaleY, .985, milliseconds: 180));
-        RootSlide.BeginAnimation(TranslateTransform.YProperty, Motion.Tween(RootSlide.Y, 3, milliseconds: 180));
+            if (token == _visibilityToken && !_panelOpen)
+            {
+                RootBorder.BeginAnimation(UIElement.OpacityProperty, null);
+                RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                RootSlide.BeginAnimation(TranslateTransform.YProperty, null);
+                Hide();
+            }
+        }, exitMs));
+        RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion.TweenOut(RootScale.ScaleX, Motion.ExitScale, milliseconds: exitMs));
+        RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion.TweenOut(RootScale.ScaleY, Motion.ExitScale, milliseconds: exitMs));
+        RootSlide.BeginAnimation(TranslateTransform.YProperty, Motion.TweenOut(RootSlide.Y, Motion.ExitOffset, milliseconds: exitMs));
     }
 
     private void PositionPanel(bool ensureVisible = true)

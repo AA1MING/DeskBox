@@ -10,20 +10,90 @@ using DeskBox.Interop;
 
 namespace DeskBox.Services;
 
+/// <summary>
+/// Shared motion language for DeskBox surfaces.
+///
+/// Easing uses Fluent-style cubic-bezier curves instead of the built-in
+/// CubicEase. The fixed CubicEase shape reads mechanical at these very short
+/// durations, which is what made the panel feel stiff:
+///   * Enter cubic-bezier(0.1, 0.9, 0.2, 1.0) - decelerate hard into place.
+///   * Exit  cubic-bezier(0.7, 0.0, 1.0, 0.5) - hold, then leave quickly.
+/// Enter (220 ms) and exit (160 ms) also differ on purpose: the panel arrives
+/// deliberately and leaves without making the user wait for it.
+/// </summary>
 public static class Motion
 {
-    public static readonly TimeSpan Duration = TimeSpan.FromMilliseconds(200);
+    public static readonly TimeSpan Duration = TimeSpan.FromMilliseconds(220);
+    public static readonly TimeSpan EnterDuration = TimeSpan.FromMilliseconds(220);
+    public static readonly TimeSpan ExitDuration = TimeSpan.FromMilliseconds(160);
     public static System.Windows.Duration FeedbackDuration => new(TimeSpan.FromMilliseconds(180));
     public static System.Windows.Duration SettleDuration => new(TimeSpan.FromMilliseconds(220));
-    public static DoubleAnimation Tween(double from, double to, Action? completed = null, int milliseconds = 200, bool spring = false)
+
+    // Surface geometry: a small lift and scale, never a large swoop.
+    public const double EnterScale = .98;
+    public const double ExitScale = .98;
+    public const double EnterOffset = 6;
+    public const double ExitOffset = 5;
+    public const double ExitOpacity = 0;
+
+    // Shared across every tween, so keep them frozen (immutable + safe to reuse).
+    private static readonly IEasingFunction EnterEase = Frozen(new CubicBezierEase(.1, .9, .2, 1));
+    private static readonly IEasingFunction ExitEase = Frozen(new CubicBezierEase(.7, 0, 1, .5));
+
+    private static T Frozen<T>(T value) where T : Freezable
+    {
+        if (value.CanFreeze) value.Freeze();
+        return value;
+    }
+
+    public static DoubleAnimation Tween(double from, double to, Action? completed = null, int milliseconds = 220, bool spring = false)
     {
         var animation = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(milliseconds))
         {
-            EasingFunction = spring ? new BackEase { Amplitude = .35, EasingMode = EasingMode.EaseOut }
-                : new CubicEase { EasingMode = EasingMode.EaseOut }
+            EasingFunction = spring ? new BackEase { Amplitude = .35, EasingMode = EasingMode.EaseOut } : EnterEase
         };
         if (completed != null) animation.Completed += (_, _) => completed();
         return animation;
+    }
+
+    /// <summary>Exit curve: starts gently, then accelerates away.</summary>
+    public static DoubleAnimation TweenOut(double from, double to, Action? completed = null, int milliseconds = 160)
+    {
+        var animation = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(milliseconds))
+        {
+            EasingFunction = ExitEase
+        };
+        if (completed != null) animation.Completed += (_, _) => completed();
+        return animation;
+    }
+
+    /// <summary>Cubic-bezier easing with the same parameterisation as CSS.</summary>
+    private sealed class CubicBezierEase : EasingFunctionBase
+    {
+        private readonly double _x1, _y1, _x2, _y2;
+        public CubicBezierEase(double x1, double y1, double x2, double y2)
+        {
+            _x1 = x1; _y1 = y1; _x2 = x2; _y2 = y2;
+            // EasingFunctionBase defaults to EaseOut, which would mirror the curve.
+            EasingMode = EasingMode.EaseIn;
+        }
+        protected override Freezable CreateInstanceCore() => new CubicBezierEase(_x1, _y1, _x2, _y2);
+        protected override double EaseInCore(double normalizedTime)
+        {
+            // Solve x(t) = normalizedTime for t, then evaluate y(t).
+            double low = 0, high = 1, t = normalizedTime;
+            for (int i = 0; i < 24; i++)
+            {
+                t = (low + high) / 2;
+                if (Bezier(t, _x1, _x2) < normalizedTime) low = t; else high = t;
+            }
+            return Bezier(t, _y1, _y2);
+        }
+        private static double Bezier(double t, double p1, double p2)
+        {
+            double u = 1 - t;
+            return 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t;
+        }
     }
 
     public static void Fade(UIElement element, double to, Action? completed = null) =>
@@ -45,7 +115,7 @@ public static class Motion
     }
     private static readonly ConditionalWeakTable<FrameworkElement, SurfaceState> Surfaces = new();
 
-    public static void PrepareEnter(FrameworkElement element, double offset = 4)
+    public static void PrepareEnter(FrameworkElement element, double offset = EnterOffset)
     {
         var state = Surfaces.GetValue(element, e => new SurfaceState(e));
         state.Exiting = false;
@@ -54,7 +124,7 @@ public static class Motion
         state.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         state.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         state.Slide.BeginAnimation(TranslateTransform.YProperty, null);
-        state.Scale.ScaleX = state.Scale.ScaleY = .985;
+        state.Scale.ScaleX = state.Scale.ScaleY = EnterScale;
         state.Slide.Y = offset;
     }
 
@@ -63,21 +133,22 @@ public static class Motion
         var state = Surfaces.GetValue(element, e => new SurfaceState(e));
         if (state.Exiting) return;
         Fade(element, 1);
-        state.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, Tween(state.Scale.ScaleX, 1, milliseconds: 220, spring: true));
-        state.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, Tween(state.Scale.ScaleY, 1, milliseconds: 220, spring: true));
-        state.Slide.BeginAnimation(TranslateTransform.YProperty, Tween(state.Slide.Y, 0, milliseconds: 220));
+        int ms = (int)EnterDuration.TotalMilliseconds;
+        state.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, Tween(state.Scale.ScaleX, 1, milliseconds: ms));
+        state.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, Tween(state.Scale.ScaleY, 1, milliseconds: ms));
+        state.Slide.BeginAnimation(TranslateTransform.YProperty, Tween(state.Slide.Y, 0, milliseconds: ms));
     }
 
     public static void Exit(FrameworkElement element, Action completed)
     {
         var state = Surfaces.GetValue(element, e => new SurfaceState(e));
         state.Exiting = true;
-        state.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, Tween(state.Scale.ScaleX, .985, milliseconds: 180));
-        state.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, Tween(state.Scale.ScaleY, .985, milliseconds: 180));
-        state.Slide.BeginAnimation(TranslateTransform.YProperty, Tween(state.Slide.Y, 3, milliseconds: 180));
-        element.BeginAnimation(UIElement.OpacityProperty, Tween(element.Opacity, .88, completed, 180));
+        int ms = (int)ExitDuration.TotalMilliseconds;
+        state.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, TweenOut(state.Scale.ScaleX, ExitScale, milliseconds: ms));
+        state.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, TweenOut(state.Scale.ScaleY, ExitScale, milliseconds: ms));
+        state.Slide.BeginAnimation(TranslateTransform.YProperty, TweenOut(state.Slide.Y, ExitOffset, milliseconds: ms));
+        element.BeginAnimation(UIElement.OpacityProperty, TweenOut(element.Opacity, ExitOpacity, completed, ms));
     }
-
     /// <summary>Prepare native material before showing the first frame; animate only content.</summary>
     public static void AttachWindow(Window window, FrameworkElement content, bool animateClose = true)
     {

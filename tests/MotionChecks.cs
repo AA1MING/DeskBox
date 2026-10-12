@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using DeskBox;
 using DeskBox.Interop;
 using DeskBox.Services;
@@ -12,6 +13,8 @@ internal static class MotionChecks
 {
     internal static async Task Run(MainWindow main, string output, Action<bool, string> check)
     {
+        VerifyMotionContract(check);
+
         main.HidePanel(); await Task.Delay(250);
         var settings = new SettingsWindow();
         var surface = (FrameworkElement)settings.FindName("SettingsSurface");
@@ -125,6 +128,32 @@ internal static class MotionChecks
         button.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = Mouse.MouseLeaveEvent });
         await Task.Delay(250);
         check(Math.Abs(buttonScale.ScaleX - 1) < .001, "interrupted button feedback returns smoothly to rest");
+    }
+
+    private static void VerifyMotionContract(Action<bool, string> check)
+    {
+        // Panel entry is a deliberate, decelerating arrival.
+        check(Motion.EnterDuration.TotalMilliseconds is >= 200 and <= 260, "panel entry stays in the 200-260 ms band");
+        check(Motion.ExitDuration < Motion.EnterDuration, "panel exit is quicker than entry");
+        check(Motion.ExitDuration.TotalMilliseconds is >= 120 and <= 200, "panel exit stays in the 120-200 ms band");
+        check(Motion.EnterScale < 1 && Motion.ExitScale < 1, "panel scales from a slightly smaller surface");
+        check(Motion.ExitOpacity == 0, "panel content fades fully out before the window is hidden");
+
+        var enter = Motion.Tween(0, 1);
+        var exit = Motion.TweenOut(0, 1);
+        check(Math.Abs(enter.Duration.TimeSpan.TotalMilliseconds - Motion.EnterDuration.TotalMilliseconds) < 1, "entry tween uses the shared enter duration");
+        check(Math.Abs(exit.Duration.TimeSpan.TotalMilliseconds - Motion.ExitDuration.TotalMilliseconds) < 1, "exit tween uses the shared exit duration");
+
+        var enterEase = (EasingFunctionBase)enter.EasingFunction;
+        var exitEase = (EasingFunctionBase)exit.EasingFunction;
+        check(enterEase.EasingMode == EasingMode.EaseIn && exitEase.EasingMode == EasingMode.EaseIn,
+            "custom bezier curves run in EaseIn mode so the shape is not mirrored");
+
+        // Enter should already be well past halfway at 25% of the timeline (strong deceleration).
+        check(enterEase.Ease(.25) > .7, "entry curve decelerates hard into place");
+        // Exit should barely have moved at 25%, then leave quickly.
+        check(exitEase.Ease(.25) < .1 && exitEase.Ease(1) > .99, "exit curve holds briefly then leaves quickly");
+        check(Math.Abs(enterEase.Ease(1) - 1) < 1e-6 && Math.Abs(exitEase.Ease(0)) < 1e-6, "both curves hit their endpoints exactly");
     }
 
     private static void Wheel(ScrollViewer viewer, int delta) => viewer.RaiseEvent(
