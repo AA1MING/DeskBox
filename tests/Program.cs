@@ -102,6 +102,7 @@ internal static class Program
         Check(main.IsVisible, "first panel show completes");
         var rootBorder = (Border)main.FindName("RootBorder");
         Check(rootBorder.Opacity > .99, "panel fades in completely");
+        Check(rootBorder.FocusVisualStyle == null, "panel root does not draw a dotted focus adorner around the window");
         var settingsButton = (Button)main.FindName("SettingsButton");
         Check(settingsButton.Focus() && settingsButton.IsKeyboardFocused, "toolbar buttons retain keyboard focus");
         Check(settingsButton.FocusVisualStyle == null, "toolbar focus does not create a dotted adorner");
