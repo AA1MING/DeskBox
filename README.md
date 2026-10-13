@@ -44,8 +44,8 @@ DeskBox 是一个常驻托盘的 Windows 桌面整理工具：一个全局热键
 ### 外观
 
 - **主题**：跟随系统 / 浅色 / 深色，实时响应 Windows 主题切换。
-- **背景材质**：Windows 11 上使用 Mica（云母）/ Acrylic（亚克力）系统材质；
-  低版本或材质不可用时自动降级为纯色 / 模糊，不会出现黑块。
+- **背景材质**：默认「玻璃」——对背后内容做实时模糊的 Apple 风格半透明材质，另有「亚克力」与「纯色」；
+  材质不可用（关闭系统透明效果 / 高对比度）时自动降级为纯色，不会出现黑块。
 - **强调色**：可跟随 Windows 系统强调色，也可固定为默认蓝。
 - **图标**：32–96 px 可调（默认 48），可隐藏名称标签，可切换「彩色原图 / 单色统一」
   （单色模式会对图标做线条化处理，与背景融合得更好）。
@@ -77,7 +77,7 @@ DeskBox 是一个常驻托盘的 Windows 桌面整理工具：一个全局热键
 
 | 项目 | 要求 |
 | --- | --- |
-| 系统 | Windows 10 1809+ / Windows 11（原生云母与亚克力需要 Windows 11 22621+，旧版本使用模糊回退） |
+| 系统 | Windows 10 1809+ / Windows 11（玻璃与亚克力均为模糊材质，旧版本自动回退） |
 | 运行时 | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)（x64） |
 | 权限 | 普通用户即可，**不需要管理员** |
 
@@ -113,7 +113,7 @@ dotnet publish .\DeskBox.csproj -c Release -r win-x64 --self-contained false `
 dotnet run --project .\tests\DeskBox.Tests.csproj -c Release
 ```
 
-云母与亚克力需要在 Windows 设置中开启“透明效果”；关闭透明效果或启用高对比度时使用纯色。拼音使用内嵌的 Unicode Unihan 数据，无需联网；多音字采用默认读音并补充常见词组，数据许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+玻璃与亚克力需要在 Windows 设置中开启“透明效果”；关闭透明效果或启用高对比度时使用纯色。拼音使用内嵌的 Unicode Unihan 数据，无需联网；多音字采用默认读音并补充常见词组，数据许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 命令行参数
 

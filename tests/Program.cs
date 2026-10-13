@@ -95,6 +95,10 @@ internal static class Program
         string legacy = File.ReadAllText(AppPaths.ConfigFile).Replace("\"HasStarted\": true,", "");
         File.WriteAllText(AppPaths.ConfigFile, legacy); ConfigService.Load();
         Check(ConfigService.Current.HasStarted && ConfigService.Current.Items.Count == 8, "upgrade recognizes existing installation without losing data");
+        // 旧的“云母”配置在读取时迁移为“玻璃”。
+        File.WriteAllText(AppPaths.ConfigFile, File.ReadAllText(AppPaths.ConfigFile).Replace("\"Backdrop\": \"Solid\"", "\"Backdrop\": \"Mica\""));
+        ConfigService.Load();
+        Check(ConfigService.Current.Backdrop == "Glass", "legacy Mica backdrop migrates to Glass");
         ConfigService.Save();
         ThemeBrushes.Apply();
         var main = new MainWindow { CaptureMode = true };
@@ -135,17 +139,16 @@ internal static class Program
         search.Clear(); await Task.Delay(500);
         Check(host.Items.Count == 1 && ConfigService.Current.LastGroupId == root.Id, "clear search restores original group");
         main.Navigate(null); await Task.Delay(400);
-        // 云母材质可被 DWM 在 RDP/切换桌面/开关透明效果时静默丢弃；重新应用主题时必须恢复。
-        if (ThemeService.BuildNumber >= 22621 && BackdropService.TransparencyEnabled)
+        // 玻璃材质走合成器模糊（AccentState=4/3）；切换材质后再切回必须仍然生效。
+        if (BackdropService.TransparencyEnabled)
         {
-            ConfigService.Current.Backdrop = "Mica"; ThemeBrushes.Apply(); main.ApplyTheme();
-            int solidAttr = 1;
-            Native.DwmSetWindowAttribute(new WindowInteropHelper(main).Handle, 38, ref solidAttr, 4);
-            Native.DwmGetWindowAttribute(new WindowInteropHelper(main).Handle, 38, out int droppedAttr, 4);
-            main.ApplyTheme();
-            Native.DwmGetWindowAttribute(new WindowInteropHelper(main).Handle, 38, out int restoredAttr, 4);
-            Check(droppedAttr != 2 && restoredAttr == 2, "mica backdrop is re-applied after DWM drops it");
-            ConfigService.Current.Backdrop = "Mica"; ThemeBrushes.Apply(); main.ApplyTheme();
+            ConfigService.Current.Backdrop = "Glass"; ThemeBrushes.Apply(); main.ApplyTheme();
+            Check(BackdropService.AppliedBackdrop == "Glass", "glass backdrop applies via composition blur");
+            int glassAlpha = ((HwndSource)PresentationSource.FromVisual(main)).CompositionTarget.BackgroundColor.A;
+            Check(glassAlpha == 0, "glass keeps the WPF render target transparent");
+            ConfigService.Current.Backdrop = "Acrylic"; ThemeBrushes.Apply(); main.ApplyTheme();
+            ConfigService.Current.Backdrop = "Glass"; ThemeBrushes.Apply(); main.ApplyTheme();
+            Check(BackdropService.AppliedBackdrop == "Glass", "glass re-applies after switching away");
         }
         await OutsideClickChecks.Run(main, output, Check);
         await InteractionChecks.Run(main, root, output, Check);
@@ -155,20 +158,20 @@ internal static class Program
         Check(!main.IsVisible, "panel hides after fade completes");
         main.ShowPanel(); await Task.Delay(500);
 
-        foreach (string material in new[] { "Mica", "Acrylic", "Solid", "Acrylic", "Mica", "Solid" })
+        foreach (string material in new[] { "Glass", "Acrylic", "Solid", "Acrylic", "Glass", "Solid" })
         {
             object firstViewModel = host.Items[0];
             ConfigService.Current.Backdrop = material;
             ThemeBrushes.Apply(); main.ApplyTheme();
             await Task.Delay(350);
             int hr = Native.DwmGetWindowAttribute(new WindowInteropHelper(main).Handle, 38, out int actual, 4);
-            int expected = material == "Mica" ? 2 : material == "Acrylic" ? 3 : 1;
-            if (ThemeService.BuildNumber >= 22621 && BackdropService.TransparencyEnabled)
+            int expected = material == "Acrylic" ? 3 : 1;
+            if (material != "Glass" && ThemeService.BuildNumber >= 22621 && BackdropService.TransparencyEnabled)
                 Check(hr == 0 && actual == expected, "native material switches to " + material);
             var source = (HwndSource)PresentationSource.FromVisual(main);
             Check(source.CompositionTarget.BackgroundColor.A == (material == "Solid" || !BackdropService.TransparencyEnabled ? 255 : 0), "WPF render target alpha for " + material);
             Check(ReferenceEquals(firstViewModel, host.Items[0]), "theme switch reuses existing item models");
-            if (material is "Mica" or "Acrylic" or "Solid") Diagnostics.CaptureWindow(main, Path.Combine(output, material.ToLowerInvariant() + ".png"));
+            if (material is "Glass" or "Acrylic" or "Solid") Diagnostics.CaptureWindow(main, Path.Combine(output, material.ToLowerInvariant() + ".png"));
         }
         await MotionChecks.Run(main, output, Check);
         main.HidePanel(); await Task.Delay(400);

@@ -10,7 +10,7 @@ public sealed class AppConfig
 
 	public string ThemeMode { get; set; } = "System";
 
-	public string Backdrop { get; set; } = "Mica";
+	public string Backdrop { get; set; } = "Glass";
 
 	public bool UseAccentColor { get; set; } = true;
 

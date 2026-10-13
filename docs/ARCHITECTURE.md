@@ -113,7 +113,7 @@ DeskItem
 | `AutoStartService` | 开机自启 | 注册表 Run 优先，启动文件夹兜底 |
 | `ThemeService` | 读系统主题/强调色 | 注册表 + 监听系统广播消息 |
 | `ThemeBrushes` | 计算并写入动态画刷 | 全部 UI 颜色都走 `DynamicResource` |
-| `BackdropService` | Mica / Acrylic / 纯色 | Win11 走 DWM，低版本走 SetWindowCompositionAttribute |
+| `BackdropService` | 玻璃 / Acrylic / 纯色 | 玻璃与低版本走 SetWindowCompositionAttribute，Acrylic 在 Win11 走 DWM |
 | `NameService` | 名称排序与全局搜索 | 内嵌 Unihan 拼音、常见多音词、自然数字比较 |
 | `Motion` | 过渡与滚动 | 300 ms 缓动、窗口准备、淡入淡出、滚动取消 |
 | `ItemDragService` | 内外部拖放数据 | 内部项目编号与 Windows FileDrop 共存，指定默认移动 |
@@ -267,10 +267,12 @@ App.ApplyThemeEverywhere()      主面板 + 设置窗口 + 托盘图标一起刷
 `CurrentAccent` 在高对比度下强制用系统高亮色，否则按 `UseAccentColor` 取系统强调色或默认蓝。
 
 `BackdropService` 分两条路：
-- Windows 11（build ≥ 22621）：`DwmSetWindowAttribute` 设 `DWMWA_SYSTEMBACKDROP_TYPE`
-  为 Mica(2) / Acrylic(3)，并用 `DwmExtendFrameIntoClientArea` 全窗延伸；返回码非 0 说明不支持，走降级。
-- 其他版本：`SetWindowCompositionAttribute` + `AccentPolicy` 做模糊或半透明，
-  高对比度或选纯色时直接不透明。
+- 玻璃（默认）：`SetWindowCompositionAttribute` + `AccentPolicy` 的 `ACCENT_ENABLE_ACRYLICBLURBEHIND(4)`
+  对窗口背后内容做实时模糊，冷调中性灰 + 适中不透明度（Apple 风格）；不支持时退回 `BLURBEHIND(3)`。
+  不依赖 DWM 系统背景材质，因此在“云母失效”的机器上也能显示。
+- Acrylic：Windows 11（build ≥ 22621）`DwmSetWindowAttribute` 设 `DWMWA_SYSTEMBACKDROP_TYPE=3`，
+  并用 `DwmExtendFrameIntoClientArea` 全窗延伸；返回码非 0 说明不支持，退回 `AccentPolicy` 模糊。
+- 纯色 / 高对比度 / 关闭透明效果：直接不透明。
 
 材质模式下 `HwndSource.CompositionTarget.BackgroundColor` 与窗口背景设为透明，面板和菜单仅保留轻微着色；系统关闭透明效果时使用纯色。画刷颜色通过 `ColorAnimation` 平滑过渡。
 

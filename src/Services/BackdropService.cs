@@ -53,19 +53,34 @@ public static class BackdropService
         string applied = "Solid";
         if (transparent)
         {
-            // Transparent WPF render target is required to expose the DWM backdrop.
+            // Transparent WPF render target is required to expose the blur behind the window.
             source.CompositionTarget.BackgroundColor = Color.FromArgb(0, 0, 0, 0);
             window.Background = Brushes.Transparent;
             margins.LeftWidth = margins.RightWidth = margins.TopHeight = margins.BottomHeight = -1;
             Native.DwmExtendFrameIntoClientArea(hwnd, ref margins);
-            int type = mode == "Acrylic" ? 3 : 2;
-            int hr = ThemeService.BuildNumber >= 22621 ? Native.DwmSetWindowAttribute(hwnd, 38, ref type, 4) : -1;
-            if (hr == 0) applied = mode;
+            if (mode == "Glass")
+            {
+                // Apple 风格的玻璃：对窗口背后的内容做实时模糊（合成器 Accent），不依赖 DWM 系统背景材质。
+                // 冷调中性灰、适中不透明度，保留清晰透光感，同时保证图标可读。
+                int alpha = dark ? 0xA6 : 0x9A;
+                int r = dark ? 26 : 247;
+                int g = dark ? 28 : 248;
+                int b = dark ? 33 : 251;
+                int gradient = (alpha << 24) | (b << 16) | (g << 8) | r; // AccentPolicy.GradientColor 为 ABGR
+                if (SetAccent(hwnd, Native.ACCENT_ENABLE_ACRYLICBLURBEHIND, gradient)) applied = "Glass";
+                else if (SetAccent(hwnd, Native.ACCENT_ENABLE_BLURBEHIND, gradient)) applied = "Glass";
+            }
             else
             {
-                byte tint = dark ? (byte)32 : (byte)245;
-                int gradient = (190 << 24) | (tint << 16) | (tint << 8) | tint;
-                if (SetAccent(hwnd, mode == "Acrylic" ? 4 : 3, gradient)) applied = mode;
+                int type = 3; // DWMSBT_TRANSIENTWINDOW (Acrylic)
+                int hr = ThemeService.BuildNumber >= 22621 ? Native.DwmSetWindowAttribute(hwnd, 38, ref type, 4) : -1;
+                if (hr == 0) applied = mode;
+                else
+                {
+                    byte tint = dark ? (byte)32 : (byte)245;
+                    int gradient = (190 << 24) | (tint << 16) | (tint << 8) | tint;
+                    if (SetAccent(hwnd, Native.ACCENT_ENABLE_ACRYLICBLURBEHIND, gradient)) applied = mode;
+                }
             }
         }
         if (applied == "Solid")
@@ -84,7 +99,8 @@ public static class BackdropService
         AppliedBackdrop = applied;
         int attrReadback = -1;
         Native.DwmGetWindowAttribute(hwnd, 38, out attrReadback, 4);
-        AppPaths.Log($"背景材质：请求={backdrop} 实际={applied} 读回={attrReadback} 透明={transparent} 深色={dark} HWND={hwnd}");
+        int accentReadback = ReadAccentState(hwnd);
+        AppPaths.Log($"背景材质：请求={backdrop} 实际={applied} 系统背景={attrReadback} 合成器={accentReadback} 透明={transparent} 深色={dark} HWND={hwnd}");
         return applied;
     }
 
@@ -109,16 +125,35 @@ public static class BackdropService
     {
         try
         {
+            if (mode == "Glass") return true; // 玻璃走合成器模糊，没有可读回的系统背景材质
             if (ThemeService.BuildNumber < 22621) return true;
             if (Native.DwmGetWindowAttribute(hwnd, 38, out int actual, 4) != 0) return true;
             if (mode == "Solid") return actual == 1 || actual == 0;
-            int expected = mode == "Acrylic" ? 3 : 2;
-            return actual == expected;
+            return actual == 3; // Acrylic
         }
         catch
         {
             return true;
         }
+    }
+
+    /// <summary>读取窗口当前的合成器（Accent）状态，用于诊断玻璃/亚克力是否真的生效。</summary>
+    private static int ReadAccentState(nint hwnd)
+    {
+        try
+        {
+            var policy = new Native.AccentPolicy();
+            nint memory = Marshal.AllocHGlobal(Marshal.SizeOf<Native.AccentPolicy>());
+            try
+            {
+                Marshal.StructureToPtr(policy, memory, false);
+                var data = new Native.WINDOWCOMPOSITIONATTRIBDATA { Attribute = 19, Data = memory, SizeOfData = Marshal.SizeOf<Native.AccentPolicy>() };
+                if (Native.GetWindowCompositionAttribute(hwnd, ref data) == 0) return -1;
+                return Marshal.PtrToStructure<Native.AccentPolicy>(memory).AccentState;
+            }
+            finally { Marshal.FreeHGlobal(memory); }
+        }
+        catch { return -1; }
     }
 
     private static bool SetAccent(nint hwnd, int state, int gradient)

@@ -43,6 +43,7 @@ public static class ConfigService
 		}
 		AppConfig current = Current;
         if (string.Equals(current.SortMode, "Type", StringComparison.OrdinalIgnoreCase)) current.SortMode = "Manual";
+		if (string.Equals(current.Backdrop, "Mica", StringComparison.OrdinalIgnoreCase)) current.Backdrop = "Glass"; // 旧“云母”改名为“玻璃”
 		if (current.Items == null)
 		{
 			List<DeskItem> list = (current.Items = new List<DeskItem>());

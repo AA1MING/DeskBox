@@ -371,6 +371,9 @@ internal static class Native
 	[DllImport("user32.dll", SetLastError = true)]
 	public static extern int SetWindowCompositionAttribute(nint hwnd, ref WINDOWCOMPOSITIONATTRIBDATA data);
 
+	[DllImport("user32.dll")]
+	public static extern int GetWindowCompositionAttribute(nint hwnd, ref WINDOWCOMPOSITIONATTRIBDATA data);
+
 	[DllImport("gdi32.dll")]
 	[return: MarshalAs(UnmanagedType.Bool)]
 	public static extern bool DeleteObject(nint hObject);

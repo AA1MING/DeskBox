@@ -68,7 +68,7 @@ public partial class SettingsWindow : Window, IComponentConnector
 		ThemeSystem.IsChecked = current.ThemeMode == "System";
 		ThemeLight.IsChecked = current.ThemeMode == "Light";
 		ThemeDark.IsChecked = current.ThemeMode == "Dark";
-		BackdropMica.IsChecked = current.Backdrop == "Mica";
+		BackdropGlass.IsChecked = current.Backdrop == "Glass" || current.Backdrop == "Mica";
 		BackdropAcrylic.IsChecked = current.Backdrop == "Acrylic";
 		BackdropSolid.IsChecked = current.Backdrop == "Solid";
 		AccentCheck.IsChecked = current.UseAccentColor;

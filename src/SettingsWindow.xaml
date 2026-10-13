@@ -11,7 +11,7 @@
     </StackPanel>
     <TextBlock Text="背景材质" FontSize="12" Margin="0,16,0,6" Foreground="{DynamicResource TextSecondary}" />
     <StackPanel Orientation="Horizontal">
-      <RadioButton Name="BackdropMica" Content="云母" Tag="Mica" Style="{StaticResource SegmentRadio}" Checked="Backdrop_Checked" />
+      <RadioButton Name="BackdropGlass" Content="玻璃" Tag="Glass" Style="{StaticResource SegmentRadio}" Checked="Backdrop_Checked" />
       <RadioButton Name="BackdropAcrylic" Content="亚克力" Tag="Acrylic" Style="{StaticResource SegmentRadio}" Checked="Backdrop_Checked" />
       <RadioButton Name="BackdropSolid" Content="纯色" Tag="Solid" Style="{StaticResource SegmentRadio}" Checked="Backdrop_Checked" />
     </StackPanel>
