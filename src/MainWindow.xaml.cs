@@ -74,6 +74,14 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
     private int _navigationToken;
     private TaskCompletionSource? _importsFinished;
 
+	private Native.LowLevelMouseProc? _mouseHookProc;
+
+	private nint _mouseHook;
+
+	private int _downX;
+
+	private int _downY;
+
 	public bool CaptureMode { get; set; }
 
 	public MainWindow()
@@ -85,6 +93,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 		SourceInitialized += OnSourceInitialized;
         Loaded += (_, _) => { if (_panelOpen) BackdropService.Cloak(this, true); };
 		Deactivated += OnDeactivated;
+		Closed += (_, _) => UninstallMouseHook();
         _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); ApplySearch(); };
         TextCompositionManager.AddPreviewTextInputStartHandler(SearchBox, (_, _) => { _searchComposing = true; _searchTimer.Stop(); });
         TextCompositionManager.AddPreviewTextInputHandler(SearchBox, (_, _) => { _searchComposing = false; _searchTimer.Start(); });
@@ -125,6 +134,104 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 				HidePanel();
 			}
 		}
+	}
+
+	/// <summary>
+	/// 安装全局低级鼠标钩子。用钩子而不是窗口失活来判定“点击面板外部”，
+	/// 这样即使窗口在某些系统/全屏程序下拿不到前台焦点，点击外面也能稳定收起。
+	/// </summary>
+	private void InstallMouseHook()
+	{
+		if (_mouseHook != IntPtr.Zero) return;
+		try
+		{
+			_mouseHookProc = MouseHookProc;
+			_mouseHook = Native.SetWindowsHookEx(Native.WH_MOUSE_LL, _mouseHookProc, Native.GetModuleHandle(null), 0u);
+			if (_mouseHook == IntPtr.Zero) AppPaths.Log("安装鼠标钩子失败：" + System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+		}
+		catch (Exception ex)
+		{
+			_mouseHook = IntPtr.Zero;
+			AppPaths.Log("安装鼠标钩子异常：" + ex.Message);
+		}
+	}
+
+	private void UninstallMouseHook()
+	{
+		if (_mouseHook == IntPtr.Zero) return;
+		try { Native.UnhookWindowsHookEx(_mouseHook); }
+		catch (Exception ex) { AppPaths.Log("卸载鼠标钩子异常：" + ex.Message); }
+		_mouseHook = IntPtr.Zero;
+		_mouseHookProc = null;
+	}
+
+	private nint MouseHookProc(int nCode, nint wParam, nint lParam)
+	{
+		try
+		{
+			if (nCode >= 0)
+			{
+				int message = wParam.ToInt32();
+				var data = System.Runtime.InteropServices.Marshal.PtrToStructure<Native.MSLLHOOKSTRUCT>(lParam);
+				if (message == Native.WM_LBUTTONDOWN)
+				{
+					_downX = data.pt.X;
+					_downY = data.pt.Y;
+				}
+				else if (message == Native.WM_LBUTTONUP || message == Native.WM_RBUTTONUP
+					|| message == Native.WM_MBUTTONUP || message == Native.WM_XBUTTONUP)
+				{
+					int x = data.pt.X;
+					int y = data.pt.Y;
+					bool leftClean = message != Native.WM_LBUTTONUP
+						|| (Math.Abs(x - _downX) <= 4 && Math.Abs(y - _downY) <= 4);
+					if (leftClean && ShouldCloseForOutsideClick(x, y)) BeginCloseFromOutsideClick();
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			AppPaths.Log("鼠标钩子处理异常：" + ex.Message);
+		}
+		return Native.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+	}
+
+	/// <summary>判断某个屏幕坐标是否属于面板本身（面板窗口或它的弹层、子窗口）。</summary>
+	private bool ShouldCloseForOutsideClick(int x, int y)
+	{
+		if (!IsVisible || !_panelOpen || _pinned || CaptureMode || _menuOpen || _dialogOpen) return false;
+		nint hit = Native.WindowFromPoint(new Native.POINT { X = x, Y = y });
+		if (hit == IntPtr.Zero) return false;
+		nint root = Native.GetAncestor(hit, Native.GA_ROOT);
+		if (root == IntPtr.Zero) root = hit;
+		if (!OutsideClickWouldClose(root)) return false;
+		if (Native.IsPointOnTaskbar(x, y)) return false; // 交给托盘图标自己切换，不要重复收起
+		return true;
+	}
+
+	/// <summary>
+	/// 纯判定：给定命中的顶层窗口句柄，是否应视为“点击面板外部”。
+	/// 抽出来是为了不依赖桌面命中测试即可回归验证。
+	/// </summary>
+	internal bool OutsideClickWouldClose(nint rootHwnd)
+	{
+		if (!IsVisible || !_panelOpen || _pinned || CaptureMode || _menuOpen || _dialogOpen) return false;
+		if (rootHwnd == IntPtr.Zero) return false;
+		nint self = new WindowInteropHelper(this).Handle;
+		if (rootHwnd == self) return false;
+		foreach (Window owned in OwnedWindows)
+		{
+			if (owned.IsVisible && rootHwnd == new WindowInteropHelper(owned).Handle) return false;
+		}
+		return true;
+	}
+
+	private void BeginCloseFromOutsideClick()
+	{
+		Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+		{
+			if (_panelOpen && !_pinned && !_menuOpen && !_dialogOpen && IsVisible) HidePanel();
+		}));
 	}
 
 	private void ArmHideWatch()
@@ -282,6 +389,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
             await Dispatcher.InvokeAsync(() => UpdateLayout(), DispatcherPriority.ContextIdle);
             if (token != _visibilityToken || !_panelOpen) return;
             PositionPanel(false);
+            InstallMouseHook();
             Native.DwmFlush();
             BackdropService.Cloak(this, false);
             Topmost = true;
@@ -307,6 +415,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
         _panelOpen = false;
         int token = ++_visibilityToken;
         if (!IsVisible) return;
+        UninstallMouseHook();
         int exitMs = (int)Motion.ExitDuration.TotalMilliseconds;
         RootBorder.BeginAnimation(UIElement.OpacityProperty, Motion.TweenOut(RootBorder.Opacity, Motion.ExitOpacity, () =>
         {

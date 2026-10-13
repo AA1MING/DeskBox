@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace DeskBox.Interop;
 
@@ -492,4 +493,75 @@ internal static class Native
 
 	[DllImport("user32.dll")]
 	public static extern nint SendMessageTimeout(nint hWnd, uint Msg, nint wParam, nint lParam, uint fuFlags, uint uTimeout, out nint lpdwResult);
-}
+
+	// ---- 全局鼠标钩子（点击面板外立即收起） ----
+
+	public const int WH_MOUSE_LL = 14;
+
+	public const int WM_LBUTTONDOWN = 513;
+
+	public const int WM_LBUTTONUP = 514;
+
+	public const int WM_RBUTTONUP = 517;
+
+	public const int WM_MBUTTONUP = 520;
+
+	public const int WM_XBUTTONUP = 524;
+
+	public const uint GA_ROOT = 2u;
+
+	[StructLayout(LayoutKind.Sequential)]
+	public struct MSLLHOOKSTRUCT
+	{
+		public POINT pt;
+		public uint mouseData;
+		public uint flags;
+		public uint time;
+		public nint dwExtraInfo;
+	}
+
+	public delegate nint LowLevelMouseProc(int nCode, nint wParam, nint lParam);
+
+	[DllImport("user32.dll", SetLastError = true)]
+	public static extern nint SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, nint hMod, uint dwThreadId);
+
+	[DllImport("user32.dll", SetLastError = true)]
+	[return: MarshalAs(UnmanagedType.Bool)]
+	public static extern bool UnhookWindowsHookEx(nint hhk);
+
+	[DllImport("user32.dll")]
+	public static extern nint CallNextHookEx(nint hhk, int nCode, nint wParam, nint lParam);
+
+	[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+	public static extern nint GetModuleHandle(string? lpModuleName);
+
+	[DllImport("user32.dll")]
+	public static extern nint WindowFromPoint(POINT point);
+
+	[DllImport("user32.dll")]
+	public static extern nint GetAncestor(nint hwnd, uint gaFlags);
+
+	[DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+	public static extern int GetClassName(nint hWnd, StringBuilder lpClassName, int nMaxCount);
+
+	/// <summary>判断屏幕坐标是否落在任务栏（含通知区域）上，用于避免把点击托盘图标当成“点击面板外”。</summary>
+	public static bool IsPointOnTaskbar(int x, int y)
+	{
+		try
+		{
+			nint child = WindowFromPoint(new POINT { X = x, Y = y });
+			if (child == IntPtr.Zero) return false;
+			nint root = GetAncestor(child, GA_ROOT);
+			if (root == IntPtr.Zero) root = child;
+			var buffer = new StringBuilder(64);
+			if (GetClassName(root, buffer, buffer.Capacity) == 0) return false;
+			string name = buffer.ToString();
+			return name.Equals("Shell_TrayWnd", StringComparison.OrdinalIgnoreCase)
+				|| name.Equals("Shell_SecondaryTrayWnd", StringComparison.OrdinalIgnoreCase);
+		}
+		catch
+		{
+			return false;
+		}
+	}
+};
