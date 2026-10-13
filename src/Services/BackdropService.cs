@@ -82,7 +82,9 @@ public static class BackdropService
         state.NeedsReapply = false;
         state.Applied = applied;
         AppliedBackdrop = applied;
-        AppPaths.Log($"背景材质：请求={backdrop} 实际={applied} HWND={hwnd}");
+        int attrReadback = -1;
+        Native.DwmGetWindowAttribute(hwnd, 38, out attrReadback, 4);
+        AppPaths.Log($"背景材质：请求={backdrop} 实际={applied} 读回={attrReadback} 透明={transparent} 深色={dark} HWND={hwnd}");
         return applied;
     }
 

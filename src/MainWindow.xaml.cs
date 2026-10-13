@@ -395,6 +395,9 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
             InstallMouseHook();
             Native.DwmFlush();
             BackdropService.Cloak(this, false);
+            // 取消 cloak / 置顶显示都可能让 DWM 丢掉材质，在真正可见后按真实状态再确认一次。
+            BackdropService.RequestReapply(this);
+            BackdropService.Apply(this, ConfigService.Current.Backdrop, ThemeBrushes.IsDarkNow);
             Topmost = true;
             Activate();
             int enterMs = (int)Motion.EnterDuration.TotalMilliseconds;
