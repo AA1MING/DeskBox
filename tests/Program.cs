@@ -139,14 +139,19 @@ internal static class Program
         search.Clear(); await Task.Delay(500);
         Check(host.Items.Count == 1 && ConfigService.Current.LastGroupId == root.Id, "clear search restores original group");
         main.Navigate(null); await Task.Delay(400);
-        // 玻璃材质走合成器模糊（AccentState=4/3）；切换材质后再切回必须仍然生效。
+        // 玻璃使用系统“透明窗口”材质(DWMSBT_TRANSIENTWINDOW=3)，确保桌面能透过界面；切换后再切回必须仍生效。
         if (BackdropService.TransparencyEnabled)
         {
             ConfigService.Current.Backdrop = "Glass"; ThemeBrushes.Apply(); main.ApplyTheme();
-            Check(BackdropService.AppliedBackdrop == "Glass", "glass backdrop applies via composition blur");
+            Check(BackdropService.AppliedBackdrop == "Glass", "glass backdrop applies");
             int glassAlpha = ((HwndSource)PresentationSource.FromVisual(main)).CompositionTarget.BackgroundColor.A;
             Check(glassAlpha == 0, "glass keeps the WPF render target transparent");
-            ConfigService.Current.Backdrop = "Acrylic"; ThemeBrushes.Apply(); main.ApplyTheme();
+            if (ThemeService.BuildNumber >= 22621)
+            {
+                Native.DwmGetWindowAttribute(new WindowInteropHelper(main).Handle, 38, out int glassAttr, 4);
+                Check(glassAttr == 3, "glass uses the system transient-window (acrylic) backdrop to show the desktop");
+            }
+            ConfigService.Current.Backdrop = "Solid"; ThemeBrushes.Apply(); main.ApplyTheme();
             ConfigService.Current.Backdrop = "Glass"; ThemeBrushes.Apply(); main.ApplyTheme();
             Check(BackdropService.AppliedBackdrop == "Glass", "glass re-applies after switching away");
         }
@@ -165,8 +170,8 @@ internal static class Program
             ThemeBrushes.Apply(); main.ApplyTheme();
             await Task.Delay(350);
             int hr = Native.DwmGetWindowAttribute(new WindowInteropHelper(main).Handle, 38, out int actual, 4);
-            int expected = material == "Acrylic" ? 3 : 1;
-            if (material != "Glass" && ThemeService.BuildNumber >= 22621 && BackdropService.TransparencyEnabled)
+            int expected = material == "Solid" ? 1 : 3;
+            if (ThemeService.BuildNumber >= 22621 && BackdropService.TransparencyEnabled)
                 Check(hr == 0 && actual == expected, "native material switches to " + material);
             var source = (HwndSource)PresentationSource.FromVisual(main);
             Check(source.CompositionTarget.BackgroundColor.A == (material == "Solid" || !BackdropService.TransparencyEnabled ? 255 : 0), "WPF render target alpha for " + material);

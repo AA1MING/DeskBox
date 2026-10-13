@@ -53,33 +53,35 @@ public static class BackdropService
         string applied = "Solid";
         if (transparent)
         {
-            // Transparent WPF render target is required to expose the blur behind the window.
+            // 透明 WPF 渲染目标：让桌面能透过窗口被合成器看到。
             source.CompositionTarget.BackgroundColor = Color.FromArgb(0, 0, 0, 0);
             window.Background = Brushes.Transparent;
             margins.LeftWidth = margins.RightWidth = margins.TopHeight = margins.BottomHeight = -1;
             Native.DwmExtendFrameIntoClientArea(hwnd, ref margins);
             if (mode == "Glass")
             {
-                // Apple 风格的玻璃：对窗口背后的内容做实时模糊（合成器 Accent），不依赖 DWM 系统背景材质。
-                // 冷调中性灰、适中不透明度，保留清晰透光感，同时保证图标可读。
-                int alpha = dark ? 0xA6 : 0x9A;
-                int r = dark ? 26 : 247;
-                int g = dark ? 28 : 248;
-                int b = dark ? 33 : 251;
-                int gradient = (alpha << 24) | (b << 16) | (g << 8) | r; // AccentPolicy.GradientColor 为 ABGR
-                if (SetAccent(hwnd, Native.ACCENT_ENABLE_ACRYLICBLURBEHIND, gradient)) applied = "Glass";
-                else if (SetAccent(hwnd, Native.ACCENT_ENABLE_BLURBEHIND, gradient)) applied = "Glass";
+                // 玻璃：用系统“透明窗口”材质（DWMSBT_TRANSIENTWINDOW = 3），真正透出并模糊桌面，
+                // 观感通透、着色轻，接近 macOS 的玻璃；不支持的旧系统退回合成器模糊。
+                int transient = 3;
+                int hr = ThemeService.BuildNumber >= 22621 ? Native.DwmSetWindowAttribute(hwnd, 38, ref transient, 4) : -1;
+                if (hr == 0) applied = "Glass";
+                else
+                {
+                    int gradient = (0x46 << 24) | ((dark ? 0x18 : 0xF6) << 16) | ((dark ? 0x1A : 0xF6) << 8) | (dark ? 0x22 : 0xF8);
+                    if (SetAccent(hwnd, Native.ACCENT_ENABLE_BLURBEHIND, gradient)) applied = "Glass";
+                    else if (SetAccent(hwnd, Native.ACCENT_ENABLE_ACRYLICBLURBEHIND, gradient)) applied = "Glass";
+                }
             }
             else
             {
-                int type = 3; // DWMSBT_TRANSIENTWINDOW (Acrylic)
-                int hr = ThemeService.BuildNumber >= 22621 ? Native.DwmSetWindowAttribute(hwnd, 38, ref type, 4) : -1;
-                if (hr == 0) applied = mode;
-                else
+                // 亚克力：合成器模糊 + 较重的着色，质感更“磨砂”。
+                byte tint = dark ? (byte)32 : (byte)245;
+                int gradient = (0xB4 << 24) | (tint << 16) | (tint << 8) | tint;
+                if (SetAccent(hwnd, Native.ACCENT_ENABLE_ACRYLICBLURBEHIND, gradient)) applied = mode;
+                else if (ThemeService.BuildNumber >= 22621)
                 {
-                    byte tint = dark ? (byte)32 : (byte)245;
-                    int gradient = (190 << 24) | (tint << 16) | (tint << 8) | tint;
-                    if (SetAccent(hwnd, Native.ACCENT_ENABLE_ACRYLICBLURBEHIND, gradient)) applied = mode;
+                    int transient = 3;
+                    if (Native.DwmSetWindowAttribute(hwnd, 38, ref transient, 4) == 0) applied = mode;
                 }
             }
         }
@@ -125,11 +127,10 @@ public static class BackdropService
     {
         try
         {
-            if (mode == "Glass") return true; // 玻璃走合成器模糊，没有可读回的系统背景材质
             if (ThemeService.BuildNumber < 22621) return true;
             if (Native.DwmGetWindowAttribute(hwnd, 38, out int actual, 4) != 0) return true;
             if (mode == "Solid") return actual == 1 || actual == 0;
-            return actual == 3; // Acrylic
+            return actual == 3; // 玻璃与亚克力在 Win11 都走 DWMSBT_TRANSIENTWINDOW(3)
         }
         catch
         {
