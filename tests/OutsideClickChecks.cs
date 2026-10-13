@@ -46,6 +46,16 @@ internal static class OutsideClickChecks
         check(!WouldClose(main, foreign), "open menu suppresses outside-click closing");
         SetField(main, "_menuOpen", false);
 
+        // While Settings (an external dialog) is open, click-away must be frozen.
+        typeof(MainWindow).GetMethod("SetExternalDialogOpen", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)!
+            .Invoke(main, new object[] { true });
+        check(!WouldClose(main, foreign), "open settings freezes outside-click closing");
+        typeof(MainWindow).GetMethod("BeginCloseFromOutsideClick", Flags)!.Invoke(main, null);
+        await System.Threading.Tasks.Task.Delay(300);
+        check(main.IsVisible, "panel stays open while settings is open");
+        typeof(MainWindow).GetMethod("SetExternalDialogOpen", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)!
+            .Invoke(main, new object[] { false });
+
         // Simulate the hook dispatch path and expect the panel to animate shut.
         typeof(MainWindow).GetMethod("BeginCloseFromOutsideClick", Flags)!.Invoke(main, null);
         await System.Threading.Tasks.Task.Delay(600);

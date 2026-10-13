@@ -556,13 +556,20 @@ public partial class App : Application
 
 	public void OpenSettings()
 	{
-        _panel?.HidePanel();
+        // 只弹设置窗口，不关闭主面板；面板保持可见，设置窗口作为它的子窗口显示在其上方。
 		SettingsWindow current = SettingsWindow.Current;
 		if (current == null)
 		{
 			current = new SettingsWindow();
+			if (_panel?.IsVisible == true)
+			{
+				current.Owner = _panel;
+				current.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+			}
+			_panel?.SetExternalDialogOpen(true);
 			current.Closed += delegate
 			{
+				_panel?.SetExternalDialogOpen(false);
 				_panel?.Refresh();
 			};
 			current.Show();

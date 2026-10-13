@@ -41,6 +41,8 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 
 	private bool _dialogOpen;
 
+	private bool _externalDialogOpen;
+
 	private bool _menuOpen;
     private int _openMenuCount;
 
@@ -123,7 +125,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 	private void OnDeactivated(object? sender, EventArgs e)
 	{
         if (_dragging) return;
-		if (!_dialogOpen && !_menuOpen && !_pinned && !CaptureMode)
+		if (!_dialogOpen && !_externalDialogOpen && !_menuOpen && !_pinned && !CaptureMode)
 		{
 			if (Native.IsLeftButtonDown())
 			{
@@ -199,7 +201,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 	/// <summary>判断某个屏幕坐标是否属于面板本身（面板窗口或它的弹层、子窗口）。</summary>
 	private bool ShouldCloseForOutsideClick(int x, int y)
 	{
-		if (!IsVisible || !_panelOpen || _pinned || CaptureMode || _menuOpen || _dialogOpen) return false;
+		if (!IsVisible || !_panelOpen || _pinned || CaptureMode || _menuOpen || _dialogOpen || _externalDialogOpen) return false;
 		nint hit = Native.WindowFromPoint(new Native.POINT { X = x, Y = y });
 		if (hit == IntPtr.Zero) return false;
 		nint root = Native.GetAncestor(hit, Native.GA_ROOT);
@@ -215,7 +217,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 	/// </summary>
 	internal bool OutsideClickWouldClose(nint rootHwnd)
 	{
-		if (!IsVisible || !_panelOpen || _pinned || CaptureMode || _menuOpen || _dialogOpen) return false;
+		if (!IsVisible || !_panelOpen || _pinned || CaptureMode || _menuOpen || _dialogOpen || _externalDialogOpen) return false;
 		if (rootHwnd == IntPtr.Zero) return false;
 		nint self = new WindowInteropHelper(this).Handle;
 		if (rootHwnd == self) return false;
@@ -230,7 +232,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 	{
 		Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
 		{
-			if (_panelOpen && !_pinned && !_menuOpen && !_dialogOpen && IsVisible) HidePanel();
+			if (_panelOpen && !_pinned && !_menuOpen && !_dialogOpen && !_externalDialogOpen && IsVisible) HidePanel();
 		}));
 	}
 
@@ -408,6 +410,9 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
             AppPaths.Log("显示面板失败：" + ex);
         }
     }
+
+    /// <summary>外部窗口（如设置）打开期间冻结自动收起，避免它抢焦点时把面板一起关掉。</summary>
+    public void SetExternalDialogOpen(bool open) => _externalDialogOpen = open;
 
     public void HidePanel()
     {
@@ -1003,7 +1008,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
             _dragging = false;
             ClearDropTargets();
             StopHideWatch();
-            if (!IsActive && !_pinned && !CaptureMode) HidePanel();
+            if (!IsActive && !_pinned && !CaptureMode && !_externalDialogOpen) HidePanel();
         }
 	}
 
@@ -1262,7 +1267,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
             _menuOpen = _openMenuCount > 0;
             Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
             {
-                if (!_menuOpen && !IsActive && !_pinned && !_dialogOpen && !CaptureMode &&
+                if (!_menuOpen && !_externalDialogOpen && !IsActive && !_pinned && !_dialogOpen && !CaptureMode &&
                     !OwnedWindows.Cast<Window>().Any(w => w.IsVisible)) HidePanel();
             }));
 		};
