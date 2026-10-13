@@ -111,10 +111,11 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
 
 	private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
 	{
-		if (msg == 26 || msg == 794 || msg == 800)
+		if (msg == 26 || msg == 794 || msg == 800 || msg == 126 || msg == 736)
 		{
 			((DispatcherObject)this).Dispatcher.BeginInvoke((Delegate)(Action)(() =>
 			{
+				BackdropService.RequestReapply(this);
 				ThemeService.Refresh();
 				(System.Windows.Application.Current as App)?.ApplyThemeEverywhere();
 			}), (DispatcherPriority)4, Array.Empty<object>());

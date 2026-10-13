@@ -456,7 +456,11 @@ public partial class App : Application
 	public void ApplyThemeEverywhere()
 	{
 		ThemeBrushes.Apply();
-        foreach (Window window in Windows) BackdropService.Apply(window, ConfigService.Current.Backdrop, ThemeBrushes.IsDarkNow);
+        foreach (Window window in Windows)
+        {
+            BackdropService.RequestReapply(window);
+            BackdropService.Apply(window, ConfigService.Current.Backdrop, ThemeBrushes.IsDarkNow);
+        }
 		_panel?.ApplyTheme();
 		_tray?.ApplyTheme(ThemeBrushes.IsDarkNow, ThemeBrushes.CurrentAccent);
 		SettingsWindow.Current?.ApplyTheme();

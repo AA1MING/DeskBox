@@ -135,6 +135,18 @@ internal static class Program
         search.Clear(); await Task.Delay(500);
         Check(host.Items.Count == 1 && ConfigService.Current.LastGroupId == root.Id, "clear search restores original group");
         main.Navigate(null); await Task.Delay(400);
+        // 云母材质可被 DWM 在 RDP/切换桌面/开关透明效果时静默丢弃；重新应用主题时必须恢复。
+        if (ThemeService.BuildNumber >= 22621 && BackdropService.TransparencyEnabled)
+        {
+            ConfigService.Current.Backdrop = "Mica"; ThemeBrushes.Apply(); main.ApplyTheme();
+            int solidAttr = 1;
+            Native.DwmSetWindowAttribute(new WindowInteropHelper(main).Handle, 38, ref solidAttr, 4);
+            Native.DwmGetWindowAttribute(new WindowInteropHelper(main).Handle, 38, out int droppedAttr, 4);
+            main.ApplyTheme();
+            Native.DwmGetWindowAttribute(new WindowInteropHelper(main).Handle, 38, out int restoredAttr, 4);
+            Check(droppedAttr != 2 && restoredAttr == 2, "mica backdrop is re-applied after DWM drops it");
+            ConfigService.Current.Backdrop = "Mica"; ThemeBrushes.Apply(); main.ApplyTheme();
+        }
         await OutsideClickChecks.Run(main, output, Check);
         await InteractionChecks.Run(main, root, output, Check);
         main.HidePanel(); await Task.Delay(70); main.ShowPanel(); await Task.Delay(500);

@@ -12,7 +12,7 @@ namespace DeskBox.Services;
 
 public static class BackdropService
 {
-    private sealed class State { public string Key = ""; public string Applied = "Solid"; }
+    private sealed class State { public string Key = ""; public string Applied = "Solid"; public bool NeedsReapply; }
     private static readonly ConditionalWeakTable<Window, State> States = new();
     public static string AppliedBackdrop { get; private set; } = "Solid";
     public static bool TransparencyEnabled
@@ -37,7 +37,9 @@ public static class BackdropService
         string mode = transparent ? backdrop : "Solid";
         var state = States.GetOrCreateValue(window);
         string key = mode + ":" + dark;
-        if (state.Key == key) return state.Applied;
+        // DWM 可能在 RDP、切换桌面/GPU、开关透明效果等情况下静默丢弃材质，
+        // 而缓存键看起来仍然一致；如果直接返回就不会重新应用，表现为“云母失效”。
+        if (state.Key == key && !state.NeedsReapply && VerifyBackdrop(source.Handle, mode, dark)) return state.Applied;
         nint hwnd = source.Handle;
         int darkValue = dark ? 1 : 0;
         Native.DwmSetWindowAttribute(hwnd, 20, ref darkValue, 4);
@@ -77,6 +79,7 @@ public static class BackdropService
             window.Background = new SolidColorBrush(color);
         }
         state.Key = key;
+        state.NeedsReapply = false;
         state.Applied = applied;
         AppliedBackdrop = applied;
         AppPaths.Log($"背景材质：请求={backdrop} 实际={applied} HWND={hwnd}");
@@ -87,6 +90,33 @@ public static class BackdropService
     {
         int value = hidden ? 1 : 0;
         Native.DwmSetWindowAttribute(new WindowInteropHelper(window).Handle, 13, ref value, 4);
+    }
+
+    /// <summary>标记某窗口需要重新应用材质（DWM 事件后调用）。</summary>
+    public static void RequestReapply(Window window)
+    {
+        if (!States.TryGetValue(window, out var state)) return;
+        state.NeedsReapply = true;
+    }
+
+    /// <summary>
+    /// 读取窗口实际的后台类型，确认缓存宣称的材质仍然生效。
+    /// 读取失败（旧系统不支持）时保守返回 true，保持原有行为。
+    /// </summary>
+    private static bool VerifyBackdrop(nint hwnd, string mode, bool dark)
+    {
+        try
+        {
+            if (ThemeService.BuildNumber < 22621) return true;
+            if (Native.DwmGetWindowAttribute(hwnd, 38, out int actual, 4) != 0) return true;
+            if (mode == "Solid") return actual == 1 || actual == 0;
+            int expected = mode == "Acrylic" ? 3 : 2;
+            return actual == expected;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private static bool SetAccent(nint hwnd, int state, int gradient)
