@@ -109,6 +109,20 @@ internal static class Program
         var host = (ItemsControl)main.FindName("ItemsHost");
         Check(host.Items.Count == 8 && host.Items.Cast<DeskBox.ViewModels.ItemVm>().All(i => i.Icon != null), "icons loaded before initial display");
         Check(host.Items.Cast<DeskBox.ViewModels.ItemVm>().All(i => !ReferenceEquals(i.Icon, IconService.Placeholder)), "initial local icons are fully prepared");
+        // 启动预热：应用开启后一次性把整棵树（含所有嵌套分组）的图标提取完毕，之后打开任意文件夹都不会再出现占位图。
+        await main.WarmAllIconsAsync();
+        var viewModels = (Dictionary<string, DeskBox.ViewModels.ItemVm>)typeof(MainWindow)
+            .GetField("_viewModels", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(main)!;
+        var allModels = new List<DeskItem>();
+        void Walk(IEnumerable<DeskItem> source)
+        {
+            foreach (var entry in source) { allModels.Add(entry); Walk(entry.Children); }
+        }
+        Walk(ConfigService.Current.Items);
+        Check(allModels.Count >= 9, "warm-up covers the whole item tree");
+        Check(allModels.All(m => viewModels.TryGetValue(m.Id, out var vm) && vm.Icon != null && !ReferenceEquals(vm.Icon, IconService.Placeholder)),
+            "startup warm-up prepares real icons for every nested item before any folder opens");
         var search = (TextBox)main.FindName("SearchBox");
         search.Text = "wx"; await Task.Delay(550);
         Check(host.Items.Count == 2, "top search finds nested applications");

@@ -264,7 +264,15 @@ public static class Diagnostics
 		using Bitmap bitmap = new Bitmap(width, height);
 		using (Graphics graphics = Graphics.FromImage(bitmap))
 		{
-			graphics.CopyFromScreen(lpRect.Left, lpRect.Top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+			try
+			{
+				graphics.CopyFromScreen(lpRect.Left, lpRect.Top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+			}
+			catch (Exception ex)
+			{
+				// 无桌面会话（例如自动化/无头环境）无法抓屏，保留空白位图继续后续检查。
+				AppPaths.Log("窗口截图失败：" + ex.Message);
+			}
 		}
 		bitmap.Save(outPath, ImageFormat.Png);
 	}

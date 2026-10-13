@@ -209,6 +209,8 @@ public partial class App : Application
 		}
 		StartShowSignalThread();
 		new WindowInteropHelper(_panel).EnsureHandle();
+		// 应用一启动就在后台把全部图标提取好，第一次打开面板或进入任何文件夹都无需等待。
+		_ = _panel.WarmAllIconsAsync();
 		_hotkeys = new HotkeyService();
 		_hotkeys.Pressed += () =>
 		{

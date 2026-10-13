@@ -62,6 +62,8 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
     private readonly Dictionary<string, Task<ImageSource?>> _iconTasks = new();
     private readonly Dictionary<string, string> _requestedIcons = new();
     private Task _iconsReady = Task.CompletedTask;
+    private Task _iconWarmTask = Task.CompletedTask;
+    private bool _iconWarmStarted;
     private readonly SemaphoreSlim _iconLoader = new(1, 1);
     private bool _searchComposing;
     private bool _dropOverlayShowing;
@@ -274,7 +276,7 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
             }
             Refresh();
             PositionPanel(false);
-            await Task.WhenAny(_iconsReady, Task.Delay(3000));
+            await Task.WhenAny(Task.WhenAll(_iconsReady, _iconWarmTask), Task.Delay(3000));
             if (token != _visibilityToken || !_panelOpen || Dispatcher.HasShutdownStarted) return;
             if (hidden) Show();
             await Dispatcher.InvokeAsync(() => UpdateLayout(), DispatcherPriority.ContextIdle);
@@ -378,17 +380,9 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
         bool forward = groupId != null && groupId != _currentGroupId;
         var destination = groupId == null ? ConfigService.Current.Items : FindItem(ConfigService.Current.Items, groupId)?.Children;
         if (destination == null) return;
-        var ready = PrepareIconsAsync(destination);
-        if (!ready.IsCompleted)
-        {
-            await Task.WhenAny(ready, Task.Delay(150));
-            if (token != _navigationToken || Dispatcher.HasShutdownStarted) return;
-            if (!ready.IsCompleted)
-            {
-                SetStatus("正在准备文件夹图标…");
-                await Task.WhenAny(ready, Task.Delay(3000));
-            }
-        }
+        // 图标在应用启动时会在后台全部预热；进入分组时再等待一次，确保第一帧就是真实图标。
+        await PrepareIconsAsync(destination);
+
         if (token != _navigationToken || Dispatcher.HasShutdownStarted) return;
         if (groupId != null && FindItem(ConfigService.Current.Items, groupId) == null) return;
         _searchTimer.Stop();
@@ -470,11 +464,54 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
         if (!_viewModels.TryGetValue(model.Id, out var vm) || !ReferenceEquals(vm.Model, model))
             _viewModels[model.Id] = vm = new ItemVm(model, IconService.Placeholder, size, size + 46, size + 46, config.ShowLabels);
         vm.UpdateLayout(size, config.ShowLabels);
-        string iconKey = $"{model.Id}|{model.StoredName}|{model.Target}|{size}|{dpi}|{config.MonochromeIcons}|{(config.MonochromeIcons ? color.ToString() : "color")}";
+        string iconKey = IconKey(model, size, dpi, config, color);
         if (!_iconTasks.TryGetValue(iconKey, out var task))
             _iconTasks[iconKey] = task = LoadIconAsync(model, size, config.MonochromeIcons, color, dpi);
         _requestedIcons[model.Id] = iconKey;
+        // 图标已经准备好时同步落到视图模型上，文件夹切换时不会再先显示占位图。
+        if (task.IsCompletedSuccessfully && task.Result != null)
+        {
+            vm.SetIcon(task.Result);
+            return (vm, Task.CompletedTask);
+        }
         return (vm, UpdateIconAsync(vm, task, iconKey));
+    }
+
+    private static string IconKey(DeskItem model, int size, double dpi, AppConfig config, Color color) =>
+        $"{model.Id}|{model.StoredName}|{model.Target}|{size}|{dpi}|{config.MonochromeIcons}|{(config.MonochromeIcons ? color.ToString() : "color")}";
+
+    /// <summary>
+    /// 启动后一次性把收纳盒里所有分组的图标全部准备好，之后打开面板或进入任何文件夹都无需等待。
+    /// 图标提取在 <see cref="LoadIconAsync"/> 里已经切到线程池，这里只在 UI 线程上编排，避免字典并发访问。
+    /// </summary>
+    public Task WarmAllIconsAsync()
+    {
+        if (_iconWarmStarted) return _iconWarmTask;
+        _iconWarmStarted = true;
+        _iconWarmTask = WarmAllIconsAsyncCore();
+        return _iconWarmTask;
+    }
+
+    private async Task WarmAllIconsAsyncCore()
+    {
+        try
+        {
+            foreach (var model in FlattenItems(ConfigService.Current.Items))
+            {
+                if (Dispatcher.HasShutdownStarted) return;
+                await PrepareItem(model).Ready;
+            }
+        }
+        catch (Exception ex) { AppPaths.Log("预热图标失败：" + ex.Message); }
+    }
+
+    private static IEnumerable<DeskItem> FlattenItems(IEnumerable<DeskItem> items)
+    {
+        foreach (var item in items)
+        {
+            yield return item;
+            foreach (var child in FlattenItems(item.Children)) yield return child;
+        }
     }
 
     public void Refresh()
@@ -766,6 +803,8 @@ public partial class MainWindow : Window, IComponentConnector, IStyleConnector
             if (result.Items.Count == 0) { SetStatus("收纳失败，请检查文件占用或访问权限。"); return; }
             if (!ContainsList(ConfigService.Current.Items, destination)) destination = ConfigService.Current.Items;
             destination.InsertRange(Math.Clamp(index, 0, destination.Count), result.Items);
+            // 新收纳进来的文件先在后台补全图标，避免首次显示占位图。
+            foreach (var model in result.Items) _ = PrepareItem(model).Ready;
             Persist();
             SetStatus(result.Copied > 0 ? $"已收纳 {result.Items.Count} 项；{result.Copied} 项仅复制，原文件保留。" : $"已移动收纳 {result.Items.Count} 项。");
         }
