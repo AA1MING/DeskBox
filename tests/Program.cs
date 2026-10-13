@@ -63,6 +63,7 @@ internal static class Program
     {
         await UpdateChecks.Run(Check);
         await ExecutablePathChecks.Run(Check);
+        AutoStartChecks.Run(Check);
         var original = new[] { Item("微信"), Item("百度"), Item("Chrome"), Item("app10"), Item("App2"), Item("资料", true), Item("Tools", true) };
         foreach (var culture in new[] { "en-US", "zh-CN" })
         {

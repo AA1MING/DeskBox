@@ -34,6 +34,7 @@ public partial class App : Application
 
 	private MainWindow? _panel;
 
+	private bool _suppressAutoStartNotice;
 	private bool _captureMode;
     private bool _exiting;
     public UpdateService Updates { get; } = new();
@@ -106,6 +107,7 @@ public partial class App : Application
 				stringBuilder.AppendLine("执行后状态 = " + (AutoStartService.IsEnabled() ? ("已启用 / " + AutoStartService.Mechanism) : "未启用"));
 			}
 			stringBuilder.AppendLine("被 Windows 启动应用列表关闭 = " + AutoStartService.IsDisabledInWindows());
+			_suppressAutoStartNotice = true;
 			File.WriteAllText(Path.Combine(AppPaths.BaseDir, "autostart.txt"), stringBuilder.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 			Shutdown();
 			return;
@@ -239,6 +241,8 @@ public partial class App : Application
 		_tray.OpenDataFolderRequested += OpenDataFolder;
 		_tray.HelpRequested += ShowHelp;
 		_tray.ExitRequested += ExitApp;
+		// 把开机自启拉回用户保存的意图，并在程序位置变化后自动修复过期项。
+		TuneAutoStart();
 		_tray.AutoStartStateProvider = AutoStartService.IsEnabled;
 		_tray.AutoStartSetter = ToggleAutoStart;
 		ApplyThemeEverywhere();
@@ -403,6 +407,29 @@ public partial class App : Application
 		{
 			AppPaths.Log("重新启动失败：" + ex.Message);
 			return false;
+		}
+	}
+
+	private void TuneAutoStart()
+	{
+		if (_suppressAutoStartNotice) return;
+		try
+		{
+			var result = AutoStartService.Tune(ConfigService.Current.AutoStart);
+			if (result.Failed)
+			{
+				AppPaths.Log("开机自启校正失败：" + result.Message);
+				_tray?.ShowBalloon("开机自启需要处理", string.IsNullOrEmpty(result.Message) ? "请检查 DeskBox 的启动项设置。" : result.Message);
+			}
+			else if (result.Repaired)
+			{
+				AppPaths.Log("开机自启已校正：" + result.Message);
+				_tray?.ShowBalloon("DeskBox 开机自启动", result.Message);
+			}
+		}
+		catch (Exception ex)
+		{
+			AppPaths.Log("开机自启校正异常：" + ex.Message);
 		}
 	}
 
