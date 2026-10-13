@@ -37,6 +37,8 @@ public static class BackdropService
         string mode = transparent ? backdrop : "Solid";
         var state = States.GetOrCreateValue(window);
         string key = mode + ":" + dark;
+        // 每次应用都对齐标题栏配色（幂等、开销小），避免带系统标题栏的设置页与无边框面板不一致。
+        ApplyCaptionTheme(source.Handle, dark);
         // DWM 可能在 RDP、切换桌面/GPU、开关透明效果等情况下静默丢弃材质，
         // 而缓存键看起来仍然一致；如果直接返回就不会重新应用，表现为“云母失效”。
         if (state.Key == key && !state.NeedsReapply && VerifyBackdrop(source.Handle, mode, dark)) return state.Applied;
@@ -155,6 +157,25 @@ public static class BackdropService
             finally { Marshal.FreeHGlobal(memory); }
         }
         catch { return -1; }
+    }
+
+    /// <summary>
+    /// 让带系统标题栏的窗口（如设置页）标题栏颜色跟随应用主题，
+    /// 避免系统亮色 + 应用深色时“主页与设置页主题不统一”。
+    /// </summary>
+    private static void ApplyCaptionTheme(nint hwnd, bool dark)
+    {
+        try
+        {
+            // DWMWA_CAPTION_COLOR / TEXT_COLOR / BORDER_COLOR 需要 COLORREF(0x00BBGGRR)。
+            int caption = dark ? 0x00202020 : 0x00F6F6F6;
+            int text = dark ? 0x00FFFFFF : 0x00000000;
+            int border = dark ? 0x002B2B2B : 0x00E2E2E2;
+            Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_CAPTION_COLOR, ref caption, 4);
+            Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_TEXT_COLOR, ref text, 4);
+            Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_BORDER_COLOR, ref border, 4);
+        }
+        catch (Exception ex) { AppPaths.Log("设置标题栏颜色失败：" + ex.Message); }
     }
 
     private static bool SetAccent(nint hwnd, int state, int gradient)

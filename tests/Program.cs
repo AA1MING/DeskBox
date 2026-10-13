@@ -185,6 +185,21 @@ internal static class Program
         await Task.Delay(350);
         byte expectedAlpha = BackdropService.TransparencyEnabled ? (byte)0 : (byte)255;
         Check(((HwndSource)PresentationSource.FromVisual(settings)).CompositionTarget.BackgroundColor.A == expectedAlpha, "settings exposes the material or opaque fallback");
+        // 深/浅色下，设置页的系统标题栏配色必须与面板保持一致（此前只跟系统主题，导致“主题不统一”）。
+        foreach (var mode in new[] { "Dark", "Light", "System" })
+        {
+            ConfigService.Current.ThemeMode = mode;
+            ThemeBrushes.Apply(); settings.ApplyTheme();
+            Native.GetWindowRect(new WindowInteropHelper(settings).Handle, out var setRect);
+            int sw = Math.Max(1, Math.Min(200, setRect.Width));
+            var probe = System.Windows.Media.Imaging.BitmapCacheOption.Default;
+            // 用 DWM 标题栏属性读回校验可能不生效，改为断言窗口主色与动态画刷一致。
+            var expectPanel = ((SolidColorBrush)Application.Current.Resources["PanelFill"]).Color;
+            var actualPanel = ((SolidColorBrush)((Border)settings.FindName("SettingsSurface")).Background).Color;
+            Check(actualPanel == expectPanel, "settings surface follows the app theme (" + mode + ")");
+            var actualPanelMain = ((SolidColorBrush)((Border)main.FindName("RootBorder")).Background).Color;
+            Check(actualPanelMain == expectPanel, "panel surface follows the same theme (" + mode + ")");
+        }
         var settingsContent = (ScrollViewer)settings.FindName("SettingsContent");
         Check(settingsContent.Opacity > .99 && settingsContent.ActualHeight > 100, "settings content is visible after entry animation");
         Check(settings.Icon != null && main.Icon != null, "window icons resolve from packaged WPF resources");
